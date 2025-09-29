@@ -3,45 +3,96 @@ package com.example.studyplanner
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.*
+import com.example.studyplanner.ui.NavRoute
+import com.example.studyplanner.ui.screens.CalendarScreen
+import com.example.studyplanner.ui.screens.FocusScreen
+import com.example.studyplanner.ui.screens.InsightsScreen
+import com.example.studyplanner.ui.screens.PlanScreen
 import com.example.studyplanner.ui.theme.StudyPlannerTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             StudyPlannerTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                AppScaffold()
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun AppScaffold() {
+    val navController = rememberNavController()
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    StudyPlannerTheme {
-        Greeting("Android")
+    val items = listOf(
+        NavRoute.Plan,
+        NavRoute.Focus,
+        NavRoute.Calendar,
+        NavRoute.Insights
+    )
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Study Planner") }
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                val currentRoute = currentBackStackEntryAsState(navController).value?.destination?.route
+                items.forEach { item ->
+                    val selected = currentRoute == item.route
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = {
+                            if (!selected) navController.navigate(item.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            when (item) {
+                                NavRoute.Plan -> Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = item.label)
+                                NavRoute.Focus -> Icon(Icons.Filled.Timer, contentDescription = item.label)
+                                NavRoute.Calendar -> Icon(Icons.Filled.CalendarMonth, contentDescription = item.label)
+                                NavRoute.Insights -> Icon(Icons.Filled.Insights, contentDescription = item.label)
+                            }
+                        },
+                        label = { Text(item.label) }
+                    )
+                }
+            }
+        }
+    ) { inner ->
+        NavHost(
+            navController = navController,
+            startDestination = NavRoute.Plan.route,
+            modifier = Modifier.padding(inner)
+        ) {
+            composable(NavRoute.Plan.route) { PlanScreen() }
+            composable(NavRoute.Focus.route) { FocusScreen() }
+            composable(NavRoute.Calendar.route) { CalendarScreen() }
+            composable(NavRoute.Insights.route) { InsightsScreen() }
+        }
     }
 }
+
+// Helper to get current route (Compose Nav)
+@Composable
+fun currentBackStackEntryAsState(navController: NavHostController)
+        : State<NavBackStackEntry?> = navController.currentBackStackEntryAsState()
