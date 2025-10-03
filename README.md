@@ -12,6 +12,7 @@ Turn assessments into **scheduled focus sessions**. Plan realistically, execute 
 
 ## 📸 Screens
 <img width="173" height="362" alt="image" src="https://github.com/user-attachments/assets/688740fd-8ef6-4596-a8ca-852ceeca5c0b" />
+
 - Plan | Focus | Calendar | Insights
 
 ## 🧱 Tech Stack
