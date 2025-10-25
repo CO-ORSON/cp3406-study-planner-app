@@ -139,10 +139,13 @@ fun PlanScreen() {
                         TextButton(
                             enabled = valid,
                             onClick = {
-                                val sessions = (totalHours!! + perSession!! - 1) / perSession
+                                val st = startWeek ?: return@TextButton
+                                val th = totalHours ?: return@TextButton
+                                val ps = perSession ?: return@TextButton
+                                val sessions = (th + ps - 1) / ps
                                 Toast.makeText(
                                     context,
-                                    "Generated $sessions sessions from Week $startWeek to before Week $dueWeek",
+                                    "Generated $sessions sessions from Week $st to before Week $dueWeek",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showAuto = false
