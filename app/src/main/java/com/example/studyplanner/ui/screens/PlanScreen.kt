@@ -28,6 +28,7 @@ fun PlanScreen() {
             val context = LocalContext.current
             val dueWeek = idx + 3
             var showDecompose by remember { mutableStateOf(false) }
+            var showAuto by remember { mutableStateOf(false) }
 
             Card {
                 Column(Modifier.padding(16.dp)) {
@@ -36,7 +37,7 @@ fun PlanScreen() {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { showDecompose = true }) { Text("Decompose Tasks") }
-                        OutlinedButton(onClick = { /* TODO: Auto-schedule */ }) { Text("Auto-schedule") }
+                        OutlinedButton(onClick = { showAuto = true }) { Text("Auto-schedule") }
                     }
                 }
             }
@@ -86,6 +87,70 @@ fun PlanScreen() {
                     },
                     dismissButton = {
                         TextButton(onClick = { showDecompose = false }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            // Minimal "Auto-schedule" dialog (no persistence)
+            if (showAuto) {
+                var startWeekText by remember { mutableStateOf((dueWeek - 2).coerceAtLeast(1).toString()) }
+                var totalHoursText by remember { mutableStateOf("6") }
+                var perSessionText by remember { mutableStateOf("2") }
+
+                val startWeek = startWeekText.toIntOrNull()
+                val totalHours = totalHoursText.toIntOrNull()
+                val perSession = perSessionText.toIntOrNull()
+
+                val valid = startWeek != null &&
+                        totalHours != null && totalHours > 0 &&
+                        perSession != null && perSession > 0 &&
+                        startWeek < dueWeek
+
+                AlertDialog(
+                    onDismissRequest = { showAuto = false },
+                    title = { Text("Auto-schedule (preview)") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = startWeekText,
+                                onValueChange = { startWeekText = it.filter(Char::isDigit) },
+                                label = { Text("Start week") },
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = totalHoursText,
+                                onValueChange = { totalHoursText = it.filter(Char::isDigit) },
+                                label = { Text("Total planned hours") },
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = perSessionText,
+                                onValueChange = { perSessionText = it.filter(Char::isDigit) },
+                                label = { Text("Hours per session") },
+                                singleLine = true
+                            )
+                            Text(
+                                "Will spread sessions before Week $dueWeek (no saving yet).",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = valid,
+                            onClick = {
+                                val sessions = (totalHours!! + perSession!! - 1) / perSession
+                                Toast.makeText(
+                                    context,
+                                    "Generated $sessions sessions from Week $startWeek to before Week $dueWeek",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showAuto = false
+                            }
+                        ) { Text("Generate") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAuto = false }) { Text("Cancel") }
                     }
                 )
             }
