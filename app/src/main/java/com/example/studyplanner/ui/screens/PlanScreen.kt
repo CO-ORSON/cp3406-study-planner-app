@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,6 +52,7 @@ fun PlanScreen() {
             var showDecompose by remember { mutableStateOf(false) }
             var showAuto by remember { mutableStateOf(false) }
             var showDelete by remember { mutableStateOf(false) }
+            var showEdit by remember { mutableStateOf(false) }
 
             Card {
                 Column(Modifier.padding(16.dp)) {
@@ -60,8 +62,13 @@ fun PlanScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(plan.title, style = MaterialTheme.typography.titleMedium)
-                        IconButton(onClick = { showDelete = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete assessment")
+                        Row {
+                            IconButton(onClick = { showEdit = true }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit assessment")
+                            }
+                            IconButton(onClick = { showDelete = true }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete assessment")
+                            }
                         }
                     }
                     Text("Due: Week $dueWeek Friday 23:59")
@@ -71,6 +78,50 @@ fun PlanScreen() {
                         OutlinedButton(onClick = { showAuto = true }) { Text("Auto-schedule") }
                     }
                 }
+            }
+
+            // Edit dialog
+            if (showEdit) {
+                var title by remember { mutableStateOf(plan.title) }
+                var dueText by remember { mutableStateOf(plan.dueWeek.toString()) }
+                val due = dueText.toIntOrNull()
+                val canSave = title.isNotBlank() && (due ?: 0) in 1..13
+
+                AlertDialog(
+                    onDismissRequest = { showEdit = false },
+                    title = { Text("Edit assessment") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text("Title") },
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = dueText,
+                                onValueChange = { dueText = it.filter(Char::isDigit) },
+                                label = { Text("Due week (1..13)") },
+                                singleLine = true
+                            )
+                            Text("Changes are in-memory only.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = canSave,
+                            onClick = {
+                                val idx = assessments.indexOf(plan)
+                                if (idx >= 0) {
+                                    assessments[idx] = plan.copy(title = title.trim(), dueWeek = due!!)
+                                    Toast.makeText(context, "Updated ${assessments[idx].title}", Toast.LENGTH_SHORT).show()
+                                }
+                                showEdit = false
+                            }
+                        ) { Text("Save") }
+                    },
+                    dismissButton = { TextButton(onClick = { showEdit = false }) { Text("Cancel") } }
+                )
             }
 
             // Confirm delete dialog
