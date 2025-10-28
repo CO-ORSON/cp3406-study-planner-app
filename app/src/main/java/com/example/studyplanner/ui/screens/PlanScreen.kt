@@ -1,5 +1,7 @@
 package com.example.studyplanner.ui.screens
 
+import android.annotation.SuppressLint
+import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,25 +13,35 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import java.time.LocalDateTime
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+
+// Minimal extra imports for white wheel text
+import android.widget.EditText
+import android.graphics.Paint
+import androidx.compose.ui.graphics.toArgb
 
 @Composable
 fun PlanScreen() {
-    // In-memory dynamic list (no persistence)
+    // In-memory list with stable IDs; dueAt replaces dueWeek
+    var nextId by remember { mutableLongStateOf(4L) }
     val assessments = remember {
         mutableStateListOf(
-            Assessment("Assessment 1", 3),
-            Assessment("Assessment 2", 4),
-            Assessment("Assessment 3", 5)
+            Assessment(1, "Assessment 1", defaultNextHour()),
+            Assessment(2, "Assessment 2", defaultNextHour().plusDays(2)),
+            Assessment(3, "Assessment 3", defaultNextHour().plusDays(5))
         )
     }
     var showAdd by remember { mutableStateOf(false) }
+    val fmt = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm") }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -46,9 +58,8 @@ fun PlanScreen() {
             )
         }
 
-        items(assessments, key = { it.title }) { plan ->
+        items(assessments, key = { it.id }) { plan ->
             val context = LocalContext.current
-            val dueWeek = plan.dueWeek
             var showDecompose by remember { mutableStateOf(false) }
             var showAuto by remember { mutableStateOf(false) }
             var showDelete by remember { mutableStateOf(false) }
@@ -71,7 +82,7 @@ fun PlanScreen() {
                             }
                         }
                     }
-                    Text("Due: Week $dueWeek Friday 23:59")
+                    Text("Due: ${plan.dueAt.format(fmt)}")
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { showDecompose = true }) { Text("Decompose Tasks") }
@@ -80,12 +91,12 @@ fun PlanScreen() {
                 }
             }
 
-            // Edit dialog
+            // Edit dialog (title + date/time wheel)
             if (showEdit) {
                 var title by remember { mutableStateOf(plan.title) }
-                var dueText by remember { mutableStateOf(plan.dueWeek.toString()) }
-                val due = dueText.toIntOrNull()
-                val canSave = title.isNotBlank() && (due ?: 0) in 1..13
+                var dueAt by remember { mutableStateOf(plan.dueAt) }
+                var openWheel by remember { mutableStateOf(false) }
+                val canSave = title.isNotBlank()
 
                 AlertDialog(
                     onDismissRequest = { showEdit = false },
@@ -98,12 +109,8 @@ fun PlanScreen() {
                                 label = { Text("Title") },
                                 singleLine = true
                             )
-                            OutlinedTextField(
-                                value = dueText,
-                                onValueChange = { dueText = it.filter(Char::isDigit) },
-                                label = { Text("Due week (1..13)") },
-                                singleLine = true
-                            )
+                            Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = { openWheel = true }) { Text("Due Date") }
                             Text("Changes are in-memory only.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
@@ -111,9 +118,9 @@ fun PlanScreen() {
                         TextButton(
                             enabled = canSave,
                             onClick = {
-                                val idx = assessments.indexOf(plan)
+                                val idx = assessments.indexOfFirst { it.id == plan.id }
                                 if (idx >= 0) {
-                                    assessments[idx] = plan.copy(title = title.trim(), dueWeek = due!!)
+                                    assessments[idx] = plan.copy(title = title.trim(), dueAt = dueAt)
                                     Toast.makeText(context, "Updated ${assessments[idx].title}", Toast.LENGTH_SHORT).show()
                                 }
                                 showEdit = false
@@ -122,9 +129,17 @@ fun PlanScreen() {
                     },
                     dismissButton = { TextButton(onClick = { showEdit = false }) { Text("Cancel") } }
                 )
+
+                if (openWheel) {
+                    DateTimeWheelDialog(
+                        initial = dueAt,
+                        onConfirm = { picked -> dueAt = picked; openWheel = false },
+                        onDismiss = { openWheel = false }
+                    )
+                }
             }
 
-            // Confirm delete dialog
+            // Delete dialog
             if (showDelete) {
                 AlertDialog(
                     onDismissRequest = { showDelete = false },
@@ -137,9 +152,7 @@ fun PlanScreen() {
                             Toast.makeText(context, "Deleted ${plan.title}", Toast.LENGTH_SHORT).show()
                         }) { Text("Delete") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDelete = false }) { Text("Cancel") }
-                    }
+                    dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } }
                 )
             }
 
@@ -167,10 +180,7 @@ fun PlanScreen() {
                                 label = { Text("Estimated hours") },
                                 singleLine = true
                             )
-                            Text(
-                                "Lightweight placeholder — wire to real state later.",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text("Lightweight placeholder — wire to real state later.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     confirmButton = {
@@ -186,38 +196,30 @@ fun PlanScreen() {
                             }
                         ) { Text("Add") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDecompose = false }) { Text("Cancel") }
-                    }
+                    dismissButton = { TextButton(onClick = { showDecompose = false }) { Text("Cancel") } }
                 )
             }
 
-            // Minimal "Auto-schedule" dialog (no persistence)
+            // "Auto-schedule" dialog (date/time based)
             if (showAuto) {
-                var startWeekText by remember { mutableStateOf((dueWeek - 2).coerceAtLeast(1).toString()) }
+                var startAt by remember { mutableStateOf(defaultNextHour()) }
+                var openWheel by remember { mutableStateOf(false) }
                 var totalHoursText by remember { mutableStateOf("6") }
                 var perSessionText by remember { mutableStateOf("2") }
 
-                val startWeek = startWeekText.toIntOrNull()
                 val totalHours = totalHoursText.toIntOrNull()
                 val perSession = perSessionText.toIntOrNull()
-
-                val valid = startWeek != null &&
-                        totalHours != null && totalHours > 0 &&
+                val valid = totalHours != null && totalHours > 0 &&
                         perSession != null && perSession > 0 &&
-                        startWeek < dueWeek
+                        startAt < plan.dueAt
 
                 AlertDialog(
                     onDismissRequest = { showAuto = false },
                     title = { Text("Auto-schedule (preview)") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedTextField(
-                                value = startWeekText,
-                                onValueChange = { startWeekText = it.filter(Char::isDigit) },
-                                label = { Text("Start week") },
-                                singleLine = true
-                            )
+                            Text("Start at: ${startAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = { openWheel = true }) { Text("Pick start date & time") }
                             OutlinedTextField(
                                 value = totalHoursText,
                                 onValueChange = { totalHoursText = it.filter(Char::isDigit) },
@@ -231,7 +233,7 @@ fun PlanScreen() {
                                 singleLine = true
                             )
                             Text(
-                                "Will spread sessions before Week $dueWeek (no saving yet).",
+                                "Will spread sessions before ${plan.dueAt.format(fmt)} (no saving yet).",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -240,33 +242,40 @@ fun PlanScreen() {
                         TextButton(
                             enabled = valid,
                             onClick = {
-                                val st = startWeek ?: return@TextButton
                                 val th = totalHours ?: return@TextButton
                                 val ps = perSession ?: return@TextButton
                                 val sessions = (th + ps - 1) / ps
                                 Toast.makeText(
                                     context,
-                                    "Generated $sessions sessions for ${plan.title} from Week $st to before Week $dueWeek",
+                                    "Generated $sessions sessions for ${plan.title} from ${startAt.format(fmt)} to ${plan.dueAt.format(fmt)}",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showAuto = false
                             }
                         ) { Text("Generate") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showAuto = false }) { Text("Cancel") }
-                    }
+                    dismissButton = { TextButton(onClick = { showAuto = false }) { Text("Cancel") } }
                 )
+
+                if (openWheel) {
+                    DateTimeWheelDialog(
+                        initial = startAt,
+                        onConfirm = { picked -> startAt = picked; openWheel = false },
+                        onDismiss = { openWheel = false }
+                    )
+                }
             }
         }
     }
 
     // Add Assessment dialog (outside LazyColumn)
     if (showAdd) {
+        val context = LocalContext.current
         var title by remember { mutableStateOf("Assessment ${assessments.size + 1}") }
-        var dueText by remember { mutableStateOf("6") }
-        val due = dueText.toIntOrNull()
-        val canAdd = title.isNotBlank() && (due ?: 0) > 0
+        var dueAt by remember { mutableStateOf(defaultNextHour()) }
+        var openWheel by remember { mutableStateOf(false) }
+        val canAdd = title.isNotBlank()
+        val fmt = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm") }
 
         AlertDialog(
             onDismissRequest = { showAdd = false },
@@ -279,31 +288,194 @@ fun PlanScreen() {
                         label = { Text("Title") },
                         singleLine = true
                     )
-                    OutlinedTextField(
-                        value = dueText,
-                        onValueChange = { dueText = it.filter(Char::isDigit) },
-                        label = { Text("Due week (1..13)") },
-                        singleLine = true
-                    )
-                    Text(
-                        "Note: stored in memory only (clears on restart).",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { openWheel = true }) { Text("Due Date") }
+                    Text("Note: stored in memory only (clears on restart).", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
                 TextButton(
                     enabled = canAdd,
                     onClick = {
-                        assessments.add(Assessment(title.trim(), due!!))
+                        assessments.add(
+                            Assessment(
+                                id = nextId++,
+                                title = title.trim(),
+                                dueAt = dueAt
+                            )
+                        )
+                        Toast.makeText(context, "Added ${title.trim()}", Toast.LENGTH_SHORT).show()
                         showAdd = false
                     }
                 ) { Text("Add") }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } }
         )
+
+        if (openWheel) {
+            DateTimeWheelDialog(
+                initial = dueAt,
+                onConfirm = { picked -> dueAt = picked; openWheel = false },
+                onDismiss = { openWheel = false }
+            )
+        }
     }
 }
 
-// Minimal model for the list (in-memory only)
-private data class Assessment(val title: String, val dueWeek: Int)
+/* ===================== Helpers & models ===================== */
+
+private data class Assessment(
+    val id: Long,
+    val title: String,
+    val dueAt: LocalDateTime
+)
+
+private fun defaultNextHour(): LocalDateTime {
+    val now = LocalDateTime.now().withSecond(0).withNano(0)
+    return if (now.minute == 0) now.plusHours(1) else now.withMinute(0).plusHours(1)
+}
+
+/* ---------- Scrollable wheel Date/Time picker using NumberPicker ---------- */
+
+@Composable
+private fun DateTimeWheelDialog(
+    initial: LocalDateTime,
+    onConfirm: (LocalDateTime) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var year by remember { mutableIntStateOf(initial.year) }
+    var month by remember { mutableIntStateOf(initial.monthValue) }
+    var day by remember { mutableIntStateOf(initial.dayOfMonth) }
+    var hour by remember { mutableIntStateOf(initial.hour) }
+    var minute by remember { mutableIntStateOf(initial.minute) }
+
+    // Hard bounds: now .. now + 1 year
+    val minDT = remember { LocalDateTime.now().withSecond(0).withNano(0) }
+    val maxDT = remember { minDT.plusYears(1) }
+
+    // Year range
+    val yearMin = minDT.year
+    val yearMax = maxDT.year
+    year = year.coerceIn(yearMin, yearMax)
+
+    // Month range depends on selected year
+    val monthMin = if (year == yearMin) minDT.monthValue else 1
+    val monthMax = if (year == yearMax) maxDT.monthValue else 12
+    month = month.coerceIn(monthMin, monthMax)
+
+    // Day range depends on selected year+month and bounds
+    val daysInMonth = YearMonth.of(year, month).lengthOfMonth()
+    val dayMin = if (year == yearMin && month == minDT.monthValue) minDT.dayOfMonth else 1
+    val dayMax = if (year == yearMax && month == maxDT.monthValue) minOf(daysInMonth, maxDT.dayOfMonth) else daysInMonth
+    day = day.coerceIn(dayMin, dayMax)
+
+    // Hour range depends on selected date and bounds
+    val hourMin = if (year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth) minDT.hour else 0
+    val hourMax = if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth) maxDT.hour else 23
+    hour = hour.coerceIn(hourMin, hourMax)
+
+    // Minute range depends on selected date+hour and bounds
+    val minuteMin = if (
+        year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth && hour == minDT.hour
+    ) minDT.minute else 0
+    val minuteMax = if (
+        year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth && hour == maxDT.hour
+    ) maxDT.minute else 59
+    minute = minute.coerceIn(minuteMin, minuteMax)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Due Date", color = Color.White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    NumberWheel("Year", year, yearMin..yearMax, { year = it }, Modifier.weight(1f))
+                    NumberWheel("Month", month, monthMin..monthMax, { month = it }, Modifier.weight(1f))
+                    NumberWheel("Day", day, dayMin..dayMax, { day = it }, Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    NumberWheel("Hour", hour, hourMin..hourMax, { hour = it }, Modifier.weight(1f))
+                    NumberWheel("Minute", minute, minuteMin..minuteMax, { minute = it }, Modifier.weight(1f))
+                }
+                Text("Past time will auto-adjust to now.", color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val picked = LocalDateTime.of(year, month, day, hour, minute)
+                val clamped = when {
+                    picked.isBefore(minDT) -> minDT
+                    picked.isAfter(maxDT)  -> maxDT
+                    else -> picked
+                }
+                onConfirm(clamped)
+            }) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** A compact scrollable wheel built on Android's NumberPicker via AndroidView — with white text. */
+@Composable
+private fun NumberWheel(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White)
+        AndroidView(
+            modifier = Modifier.height(120.dp).fillMaxWidth(),
+            factory = { context ->
+                NumberPicker(context).apply {
+                    minValue = range.first
+                    maxValue = range.last
+                    wrapSelectorWheel = true
+                    this.value = value.coerceIn(minValue, maxValue)
+                    // Make numbers white
+                    tintNumberPicker(this)
+                    setOnValueChangedListener { _, _, newVal -> onValueChange(newVal) }
+                }
+            },
+            update = { picker ->
+                if (picker.minValue != range.first || picker.maxValue != range.last) {
+                    picker.minValue = range.first
+                    picker.maxValue = range.last
+                }
+                val desired = value.coerceIn(picker.minValue, picker.maxValue)
+                if (picker.value != desired) picker.value = desired
+                // Keep them white after updates
+                tintNumberPicker(picker)
+            }
+        )
+    }
+}
+
+// Tiny helper to force white text on NumberPicker (center + faded items + EditText)
+@SuppressLint("SoonBlockedPrivateApi")
+private fun tintNumberPicker(picker: NumberPicker) {
+    try {
+        val f = NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint")
+        f.isAccessible = true
+        (f.get(picker) as Paint).color = Color.White.toArgb()
+
+        for (i in 0 until picker.childCount) {
+            val child = picker.getChildAt(i)
+            if (child is EditText) {
+                child.setTextColor(Color.White.toArgb())
+                child.highlightColor = Color.White.toArgb()
+            }
+        }
+        picker.invalidate()
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
