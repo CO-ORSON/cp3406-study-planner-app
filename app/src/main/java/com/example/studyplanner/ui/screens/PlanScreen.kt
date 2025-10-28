@@ -3,6 +3,7 @@ package com.example.studyplanner.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -11,6 +12,16 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun PlanScreen() {
+    // In-memory dynamic list (no persistence)
+    val assessments = remember {
+        mutableStateListOf(
+            Assessment("Assessment 1", 3),
+            Assessment("Assessment 2", 4),
+            Assessment("Assessment 3", 5)
+        )
+    }
+    var showAdd by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -18,21 +29,28 @@ fun PlanScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Plan", style = MaterialTheme.typography.headlineSmall)
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Plan", style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = { showAdd = true }) { Text("Add assessment") }
+            }
             Text(
                 "Add courses and assessments, then decompose into study sessions.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
-        items(3) { idx ->
+
+        items(assessments, key = { it.title }) { plan ->
             val context = LocalContext.current
-            val dueWeek = idx + 3
+            val dueWeek = plan.dueWeek
             var showDecompose by remember { mutableStateOf(false) }
             var showAuto by remember { mutableStateOf(false) }
 
             Card {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Assessment ${idx + 1}", style = MaterialTheme.typography.titleMedium)
+                    Text(plan.title, style = MaterialTheme.typography.titleMedium)
                     Text("Due: Week $dueWeek Friday 23:59")
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -78,7 +96,7 @@ fun PlanScreen() {
                             onClick = {
                                 Toast.makeText(
                                     context,
-                                    "Added: \"$name\" (${hours}h) for Assessment ${idx + 1}",
+                                    "Added: \"$name\" (${hours}h) for ${plan.title}",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showDecompose = false
@@ -145,7 +163,7 @@ fun PlanScreen() {
                                 val sessions = (th + ps - 1) / ps
                                 Toast.makeText(
                                     context,
-                                    "Generated $sessions sessions from Week $st to before Week $dueWeek",
+                                    "Generated $sessions sessions for ${plan.title} from Week $st to before Week $dueWeek",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showAuto = false
@@ -159,4 +177,49 @@ fun PlanScreen() {
             }
         }
     }
+
+    if (showAdd) {
+        var title by remember { mutableStateOf("Assessment ${assessments.size + 1}") }
+        var dueText by remember { mutableStateOf("6") }
+        val due = dueText.toIntOrNull()
+        val canAdd = title.isNotBlank() && (due ?: 0) > 0
+
+        AlertDialog(
+            onDismissRequest = { showAdd = false },
+            title = { Text("New assessment") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Title") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = dueText,
+                        onValueChange = { dueText = it.filter(Char::isDigit) },
+                        label = { Text("Due week (1..13)") },
+                        singleLine = true
+                    )
+                    Text(
+                        "Note: stored in memory only (clears on restart).",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = canAdd,
+                    onClick = {
+                        assessments.add(Assessment(title.trim(), due!!))
+                        showAdd = false
+                    }
+                ) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } }
+        )
+    }
 }
+
+// Minimal model for the list (in-memory only)
+private data class Assessment(val title: String, val dueWeek: Int)
