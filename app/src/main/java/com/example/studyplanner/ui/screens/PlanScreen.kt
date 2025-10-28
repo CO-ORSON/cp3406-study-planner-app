@@ -1,6 +1,5 @@
 package com.example.studyplanner.ui.screens
 
-import android.annotation.SuppressLint
 import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -13,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -21,10 +19,6 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-// Minimal extra imports for white wheel text
-import android.widget.EditText
-import android.graphics.Paint
-import androidx.compose.ui.graphics.toArgb
 
 @Composable
 fun PlanScreen() {
@@ -385,7 +379,7 @@ private fun DateTimeWheelDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Due Date", color = Color.White) },
+        title = { Text("Due Date") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
@@ -403,7 +397,7 @@ private fun DateTimeWheelDialog(
                     NumberWheel("Hour", hour, hourMin..hourMax, { hour = it }, Modifier.weight(1f))
                     NumberWheel("Minute", minute, minuteMin..minuteMax, { minute = it }, Modifier.weight(1f))
                 }
-                Text("Past time will auto-adjust to now.", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                Text("Past time will auto-adjust to now.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
@@ -421,7 +415,6 @@ private fun DateTimeWheelDialog(
     )
 }
 
-/** A compact scrollable wheel built on Android's NumberPicker via AndroidView — with white text. */
 @Composable
 private fun NumberWheel(
     label: String,
@@ -431,7 +424,7 @@ private fun NumberWheel(
     modifier: Modifier = Modifier
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White)
+        Text(label, style = MaterialTheme.typography.labelMedium)
         AndroidView(
             modifier = Modifier.height(120.dp).fillMaxWidth(),
             factory = { context ->
@@ -440,8 +433,6 @@ private fun NumberWheel(
                     maxValue = range.last
                     wrapSelectorWheel = true
                     this.value = value.coerceIn(minValue, maxValue)
-                    // Make numbers white
-                    tintNumberPicker(this)
                     setOnValueChangedListener { _, _, newVal -> onValueChange(newVal) }
                 }
             },
@@ -452,30 +443,8 @@ private fun NumberWheel(
                 }
                 val desired = value.coerceIn(picker.minValue, picker.maxValue)
                 if (picker.value != desired) picker.value = desired
-                // Keep them white after updates
-                tintNumberPicker(picker)
+
             }
         )
-    }
-}
-
-// Tiny helper to force white text on NumberPicker (center + faded items + EditText)
-@SuppressLint("SoonBlockedPrivateApi")
-private fun tintNumberPicker(picker: NumberPicker) {
-    try {
-        val f = NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint")
-        f.isAccessible = true
-        (f.get(picker) as Paint).color = Color.White.toArgb()
-
-        for (i in 0 until picker.childCount) {
-            val child = picker.getChildAt(i)
-            if (child is EditText) {
-                child.setTextColor(Color.White.toArgb())
-                child.highlightColor = Color.White.toArgb()
-            }
-        }
-        picker.invalidate()
-    } catch (e: Exception) {
-        e.printStackTrace()
     }
 }
