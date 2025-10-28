@@ -4,8 +4,11 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -47,10 +50,20 @@ fun PlanScreen() {
             val dueWeek = plan.dueWeek
             var showDecompose by remember { mutableStateOf(false) }
             var showAuto by remember { mutableStateOf(false) }
+            var showDelete by remember { mutableStateOf(false) }
 
             Card {
                 Column(Modifier.padding(16.dp)) {
-                    Text(plan.title, style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(plan.title, style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete assessment")
+                        }
+                    }
                     Text("Due: Week $dueWeek Friday 23:59")
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -58,6 +71,25 @@ fun PlanScreen() {
                         OutlinedButton(onClick = { showAuto = true }) { Text("Auto-schedule") }
                     }
                 }
+            }
+
+            // Confirm delete dialog
+            if (showDelete) {
+                AlertDialog(
+                    onDismissRequest = { showDelete = false },
+                    title = { Text("Delete assessment") },
+                    text = { Text("Remove \"${plan.title}\" from your plan? This cannot be undone.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            assessments.remove(plan)
+                            showDelete = false
+                            Toast.makeText(context, "Deleted ${plan.title}", Toast.LENGTH_SHORT).show()
+                        }) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDelete = false }) { Text("Cancel") }
+                    }
+                )
             }
 
             // Minimal "Decompose" dialog (no persistence)
@@ -178,6 +210,7 @@ fun PlanScreen() {
         }
     }
 
+    // Add Assessment dialog (outside LazyColumn)
     if (showAdd) {
         var title by remember { mutableStateOf("Assessment ${assessments.size + 1}") }
         var dueText by remember { mutableStateOf("6") }
