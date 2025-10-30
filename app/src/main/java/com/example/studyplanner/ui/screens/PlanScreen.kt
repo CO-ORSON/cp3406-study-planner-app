@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlaylistAddCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,10 +20,8 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-
 @Composable
 fun PlanScreen() {
-    // In-memory list with stable IDs; dueAt replaces dueWeek
     var nextId by remember { mutableLongStateOf(4L) }
     val assessments = remember {
         mutableStateListOf(
@@ -44,7 +43,9 @@ fun PlanScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Plan", style = MaterialTheme.typography.headlineSmall)
-                TextButton(onClick = { showAdd = true }) { Text("Add assessment") }
+                IconButton(onClick = { showAdd = true }) {
+                    Icon(Icons.Filled.PlaylistAddCircle, contentDescription = "Add assessment")
+                }
             }
             Text(
                 "Add courses and assessments, then decompose into study sessions.",
@@ -82,10 +83,25 @@ fun PlanScreen() {
                         Button(onClick = { showDecompose = true }) { Text("Decompose Tasks") }
                         OutlinedButton(onClick = { showAuto = true }) { Text("Auto-schedule") }
                     }
+
+                    // Show subtasks (NEW)
+                    if (plan.subtasks.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Subtasks:", style = MaterialTheme.typography.labelLarge)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            plan.subtasks.forEach { st ->
+                                val first = st.scheduledSlots.firstOrNull()
+                                val schedNote = if (first != null)
+                                    " — starts ${first.format(fmt)} (${st.scheduledSlots.size}h)"
+                                else ""
+                                Text("• ${st.name} (${st.hours}h)$schedNote", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
                 }
             }
 
-            // Edit dialog (title + date/time wheel)
+            // Edit dialog
             if (showEdit) {
                 var title by remember { mutableStateOf(plan.title) }
                 var dueAt by remember { mutableStateOf(plan.dueAt) }
@@ -114,7 +130,11 @@ fun PlanScreen() {
                             onClick = {
                                 val idx = assessments.indexOfFirst { it.id == plan.id }
                                 if (idx >= 0) {
-                                    assessments[idx] = plan.copy(title = title.trim(), dueAt = dueAt)
+                                    assessments[idx] = plan.copy(
+                                        title = title.trim(),
+                                        dueAt = dueAt,
+                                        subtasks = plan.subtasks // keep existing subtasks
+                                    )
                                     Toast.makeText(context, "Updated ${assessments[idx].title}", Toast.LENGTH_SHORT).show()
                                 }
                                 showEdit = false
@@ -150,7 +170,7 @@ fun PlanScreen() {
                 )
             }
 
-            // Minimal "Decompose" dialog (no persistence)
+            // Decompose dialog (NEW: add many subtasks)
             if (showDecompose) {
                 var name by remember { mutableStateOf("") }
                 var hoursText by remember { mutableStateOf("") }
@@ -174,38 +194,31 @@ fun PlanScreen() {
                                 label = { Text("Estimated hours") },
                                 singleLine = true
                             )
-                            Text("Lightweight placeholder — wire to real state later.", style = MaterialTheme.typography.bodySmall)
+                            Text("Add multiple subtasks; press Done when finished.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     confirmButton = {
                         TextButton(
                             enabled = canAdd,
                             onClick = {
-                                Toast.makeText(
-                                    context,
-                                    "Added: \"$name\" (${hours}h) for ${plan.title}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                showDecompose = false
+                                plan.subtasks.add(Subtask(name.trim(), hours ?: 0))
+                                name = ""
+                                hoursText = ""
+                                Toast.makeText(context, "Added subtask to ${plan.title}", Toast.LENGTH_SHORT).show()
                             }
                         ) { Text("Add") }
                     },
-                    dismissButton = { TextButton(onClick = { showDecompose = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showDecompose = false }) { Text("Done") } }
                 )
             }
 
-            // "Auto-schedule" dialog (date/time based)
+            // Auto-schedule dialog (NEW: pick start only, schedule 1h blocks)
             if (showAuto) {
                 var startAt by remember { mutableStateOf(defaultNextHour()) }
                 var openWheel by remember { mutableStateOf(false) }
-                var totalHoursText by remember { mutableStateOf("6") }
-                var perSessionText by remember { mutableStateOf("2") }
 
-                val totalHours = totalHoursText.toIntOrNull()
-                val perSession = perSessionText.toIntOrNull()
-                val valid = totalHours != null && totalHours > 0 &&
-                        perSession != null && perSession > 0 &&
-                        startAt < plan.dueAt
+                val hasHours = plan.subtasks.sumOf { it.hours } > 0
+                val valid = hasHours && startAt < plan.dueAt
 
                 AlertDialog(
                     onDismissRequest = { showAuto = false },
@@ -214,39 +227,47 @@ fun PlanScreen() {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Start at: ${startAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
                             OutlinedButton(onClick = { openWheel = true }) { Text("Pick start date & time") }
-                            OutlinedTextField(
-                                value = totalHoursText,
-                                onValueChange = { totalHoursText = it.filter(Char::isDigit) },
-                                label = { Text("Total planned hours") },
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = perSessionText,
-                                onValueChange = { perSessionText = it.filter(Char::isDigit) },
-                                label = { Text("Hours per session") },
-                                singleLine = true
-                            )
-                            Text(
-                                "Will spread sessions before ${plan.dueAt.format(fmt)} (no saving yet).",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text("Schedules each subtask in 1-hour blocks until ${plan.dueAt.format(fmt)}.",
+                                style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     confirmButton = {
                         TextButton(
                             enabled = valid,
                             onClick = {
-                                val th = totalHours ?: return@TextButton
-                                val ps = perSession ?: return@TextButton
-                                val sessions = (th + ps - 1) / ps
+                                // Clear previous schedule for this assessment in shared calendar
+                                SharedCalendar.items.removeAll { it.assessmentId == plan.id }
+
+                                var cursor = startAt
+                                val end = plan.dueAt
+                                var placed = 0
+                                plan.subtasks.forEach { st ->
+                                    st.scheduledSlots.clear()
+                                    repeat(st.hours) {
+                                        if (cursor.isBefore(end)) {
+                                            st.scheduledSlots.add(cursor)
+                                            SharedCalendar.items.add(
+                                                CalendarEntry(
+                                                    title = "${plan.title}: ${st.name}",
+                                                    start = cursor,
+                                                    end = cursor.plusHours(1),
+                                                    assessmentId = plan.id,
+                                                    subtaskName = st.name
+                                                )
+                                            )
+                                            cursor = cursor.plusHours(1)
+                                            placed++
+                                        }
+                                    }
+                                }
                                 Toast.makeText(
                                     context,
-                                    "Generated $sessions sessions for ${plan.title} from ${startAt.format(fmt)} to ${plan.dueAt.format(fmt)}",
+                                    "Scheduled $placed hour(s) across ${plan.subtasks.size} subtask(s).",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showAuto = false
                             }
-                        ) { Text("Generate") }
+                        ) { Text("Schedule") }
                     },
                     dismissButton = { TextButton(onClick = { showAuto = false }) { Text("Cancel") } }
                 )
@@ -262,7 +283,7 @@ fun PlanScreen() {
         }
     }
 
-    // Add Assessment dialog (outside LazyColumn)
+    // Add Assessment dialog
     if (showAdd) {
         val context = LocalContext.current
         var title by remember { mutableStateOf("Assessment ${assessments.size + 1}") }
@@ -318,11 +339,32 @@ fun PlanScreen() {
 
 /* ===================== Helpers & models ===================== */
 
+// Simple models; use MutableList but back them with state lists to trigger recomposition
+private data class Subtask(
+    val name: String,
+    val hours: Int,
+    val scheduledSlots: MutableList<LocalDateTime> = mutableStateListOf()
+)
+
 private data class Assessment(
     val id: Long,
     val title: String,
-    val dueAt: LocalDateTime
+    val dueAt: LocalDateTime,
+    val subtasks: MutableList<Subtask> = mutableStateListOf()
 )
+
+// Tiny shared calendar store (CalendarScreen can read this later)
+data class CalendarEntry(
+    val title: String,
+    val start: LocalDateTime,
+    val end: LocalDateTime,
+    val assessmentId: Long,
+    val subtaskName: String
+)
+
+object SharedCalendar {
+    val items = mutableStateListOf<CalendarEntry>()
+}
 
 private fun defaultNextHour(): LocalDateTime {
     val now = LocalDateTime.now().withSecond(0).withNano(0)
@@ -343,38 +385,28 @@ private fun DateTimeWheelDialog(
     var hour by remember { mutableIntStateOf(initial.hour) }
     var minute by remember { mutableIntStateOf(initial.minute) }
 
-    // Hard bounds: now .. now + 1 year
     val minDT = remember { LocalDateTime.now().withSecond(0).withNano(0) }
     val maxDT = remember { minDT.plusYears(1) }
 
-    // Year range
     val yearMin = minDT.year
     val yearMax = maxDT.year
     year = year.coerceIn(yearMin, yearMax)
 
-    // Month range depends on selected year
     val monthMin = if (year == yearMin) minDT.monthValue else 1
     val monthMax = if (year == yearMax) maxDT.monthValue else 12
     month = month.coerceIn(monthMin, monthMax)
 
-    // Day range depends on selected year+month and bounds
     val daysInMonth = YearMonth.of(year, month).lengthOfMonth()
     val dayMin = if (year == yearMin && month == minDT.monthValue) minDT.dayOfMonth else 1
     val dayMax = if (year == yearMax && month == maxDT.monthValue) minOf(daysInMonth, maxDT.dayOfMonth) else daysInMonth
     day = day.coerceIn(dayMin, dayMax)
 
-    // Hour range depends on selected date and bounds
     val hourMin = if (year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth) minDT.hour else 0
     val hourMax = if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth) maxDT.hour else 23
     hour = hour.coerceIn(hourMin, hourMax)
 
-    // Minute range depends on selected date+hour and bounds
-    val minuteMin = if (
-        year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth && hour == minDT.hour
-    ) minDT.minute else 0
-    val minuteMax = if (
-        year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth && hour == maxDT.hour
-    ) maxDT.minute else 59
+    val minuteMin = if (year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth && hour == minDT.hour) minDT.minute else 0
+    val minuteMax = if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth && hour == maxDT.hour) maxDT.minute else 59
     minute = minute.coerceIn(minuteMin, minuteMax)
 
     AlertDialog(
@@ -382,18 +414,12 @@ private fun DateTimeWheelDialog(
         title = { Text("Due Date") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     NumberWheel("Year", year, yearMin..yearMax, { year = it }, Modifier.weight(1f))
                     NumberWheel("Month", month, monthMin..monthMax, { month = it }, Modifier.weight(1f))
                     NumberWheel("Day", day, dayMin..dayMax, { day = it }, Modifier.weight(1f))
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     NumberWheel("Hour", hour, hourMin..hourMax, { hour = it }, Modifier.weight(1f))
                     NumberWheel("Minute", minute, minuteMin..minuteMax, { minute = it }, Modifier.weight(1f))
                 }
@@ -443,7 +469,6 @@ private fun NumberWheel(
                 }
                 val desired = value.coerceIn(picker.minValue, picker.maxValue)
                 if (picker.value != desired) picker.value = desired
-
             }
         )
     }
