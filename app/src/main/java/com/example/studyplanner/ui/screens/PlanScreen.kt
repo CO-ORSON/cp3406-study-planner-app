@@ -25,9 +25,9 @@ fun PlanScreen() {
     var nextId by remember { mutableLongStateOf(4L) }
     val assessments = remember {
         mutableStateListOf(
-            Assessment(1, "Assessment 1", defaultNextHour()),
-            Assessment(2, "Assessment 2", defaultNextHour().plusDays(2)),
-            Assessment(3, "Assessment 3", defaultNextHour().plusDays(5))
+            Assessment(1, "Assessment 1", defaultNextHour().plusWeeks(1)),
+            Assessment(2, "Assessment 2", defaultNextHour().plusWeeks(2)),
+            Assessment(3, "Assessment 3", defaultNextHour().plusWeeks(3))
         )
     }
     var showAdd by remember { mutableStateOf(false) }
@@ -48,7 +48,7 @@ fun PlanScreen() {
                 }
             }
             Text(
-                "Add courses and assessments, then decompose into study sessions.",
+                "Add courses and assessments, then decompose into subtasks with due dates.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -84,17 +84,13 @@ fun PlanScreen() {
                         OutlinedButton(onClick = { showAuto = true }) { Text("Auto-schedule") }
                     }
 
-                    // Show subtasks (NEW)
+                    // Subtasks list (name + due date)
                     if (plan.subtasks.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Text("Subtasks:", style = MaterialTheme.typography.labelLarge)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             plan.subtasks.forEach { st ->
-                                val first = st.scheduledSlots.firstOrNull()
-                                val schedNote = if (first != null)
-                                    " — starts ${first.format(fmt)} (${st.scheduledSlots.size}h)"
-                                else ""
-                                Text("• ${st.name} (${st.hours}h)$schedNote", style = MaterialTheme.typography.bodyMedium)
+                                Text("• ${st.name} — due ${st.dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -120,7 +116,7 @@ fun PlanScreen() {
                                 singleLine = true
                             )
                             Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
-                            OutlinedButton(onClick = { openWheel = true }) { Text("Due Date") }
+                            OutlinedButton(onClick = { openWheel = true }) { Text("Pick due date") }
                             Text("Changes are in-memory only.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
@@ -130,11 +126,8 @@ fun PlanScreen() {
                             onClick = {
                                 val idx = assessments.indexOfFirst { it.id == plan.id }
                                 if (idx >= 0) {
-                                    assessments[idx] = plan.copy(
-                                        title = title.trim(),
-                                        dueAt = dueAt,
-                                        subtasks = plan.subtasks // keep existing subtasks
-                                    )
+                                    assessments[idx] =
+                                        plan.copy(title = title.trim(), dueAt = dueAt, subtasks = plan.subtasks)
                                     Toast.makeText(context, "Updated ${assessments[idx].title}", Toast.LENGTH_SHORT).show()
                                 }
                                 showEdit = false
@@ -145,6 +138,7 @@ fun PlanScreen() {
                 )
 
                 if (openWheel) {
+                    // default range (now..now+1y)
                     DateTimeWheelDialog(
                         initial = dueAt,
                         onConfirm = { picked -> dueAt = picked; openWheel = false },
@@ -170,12 +164,12 @@ fun PlanScreen() {
                 )
             }
 
-            // Decompose dialog (NEW: add many subtasks)
+            // Decompose dialog (name + due date instead of hours)
             if (showDecompose) {
                 var name by remember { mutableStateOf("") }
-                var hoursText by remember { mutableStateOf("") }
-                val hours = hoursText.toIntOrNull()
-                val canAdd = name.isNotBlank() && (hours ?: 0) > 0
+                var dueAt by remember { mutableStateOf(minOf(defaultNextHour(), plan.dueAt)) }
+                var openWheel by remember { mutableStateOf(false) }
+                val canAdd = name.isNotBlank() && dueAt <= plan.dueAt
 
                 AlertDialog(
                     onDismissRequest = { showDecompose = false },
@@ -188,97 +182,100 @@ fun PlanScreen() {
                                 label = { Text("Subtask name") },
                                 singleLine = true
                             )
-                            OutlinedTextField(
-                                value = hoursText,
-                                onValueChange = { hoursText = it.filter(Char::isDigit) },
-                                label = { Text("Estimated hours") },
-                                singleLine = true
-                            )
-                            Text("Add multiple subtasks; press Done when finished.", style = MaterialTheme.typography.bodySmall)
+                            Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = { openWheel = true }) { Text("Pick subtask due date") }
+                            Text("Tip: subtask due should not exceed the assessment due date.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     confirmButton = {
                         TextButton(
                             enabled = canAdd,
                             onClick = {
-                                plan.subtasks.add(Subtask(name.trim(), hours ?: 0))
+                                plan.subtasks.add(Subtask(name.trim(), dueAt))
                                 name = ""
-                                hoursText = ""
+                                dueAt = minOf(defaultNextHour(), plan.dueAt)
                                 Toast.makeText(context, "Added subtask to ${plan.title}", Toast.LENGTH_SHORT).show()
                             }
                         ) { Text("Add") }
                     },
                     dismissButton = { TextButton(onClick = { showDecompose = false }) { Text("Done") } }
                 )
+
+                if (openWheel) {
+                    // Constrain subtask due date: now..plan.dueAt
+                    DateTimeWheelDialog(
+                        initial = dueAt,
+                        onConfirm = { picked -> dueAt = picked; openWheel = false },
+                        onDismiss = { openWheel = false },
+                        min = LocalDateTime.now().withSecond(0).withNano(0),
+                        max = plan.dueAt
+                    )
+                }
             }
 
-            // Auto-schedule dialog (NEW: pick start only, schedule 1h blocks)
+            // Auto-schedule: only mark due dates to Calendar (assessment + all subtasks)
             if (showAuto) {
-                var startAt by remember { mutableStateOf(defaultNextHour()) }
-                var openWheel by remember { mutableStateOf(false) }
-
-                val hasHours = plan.subtasks.sumOf { it.hours } > 0
-                val valid = hasHours && startAt < plan.dueAt
+                val now = LocalDateTime.now()
+                val valid = plan.dueAt.isAfter(now)
 
                 AlertDialog(
                     onDismissRequest = { showAuto = false },
-                    title = { Text("Auto-schedule (preview)") },
+                    title = { Text("Sync due dates to Calendar") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Start at: ${startAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
-                            OutlinedButton(onClick = { openWheel = true }) { Text("Pick start date & time") }
-                            Text("Schedules each subtask in 1-hour blocks until ${plan.dueAt.format(fmt)}.",
-                                style = MaterialTheme.typography.bodySmall)
+                            Text("This will add calendar entries for:", style = MaterialTheme.typography.bodyMedium)
+                            Text("• Assessment due: ${plan.dueAt.format(fmt)}", style = MaterialTheme.typography.bodySmall)
+                            if (plan.subtasks.isEmpty()) {
+                                Text("• No subtasks yet (only assessment will be added).", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("• ${plan.subtasks.size} subtask due date(s).", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     },
                     confirmButton = {
                         TextButton(
                             enabled = valid,
                             onClick = {
-                                // Clear previous schedule for this assessment in shared calendar
+                                // Remove previous entries for this assessment, then add fresh due markers
                                 SharedCalendar.items.removeAll { it.assessmentId == plan.id }
 
-                                var cursor = startAt
-                                val end = plan.dueAt
-                                var placed = 0
+                                // Assessment due (1-hour marker)
+                                SharedCalendar.items.add(
+                                    CalendarEntry(
+                                        title = "${plan.title} — DUE",
+                                        start = plan.dueAt,
+                                        end = plan.dueAt.plusHours(1),
+                                        assessmentId = plan.id,
+                                        subtaskName = "Assessment due"
+                                    )
+                                )
+
+                                // Subtasks due
+                                var added = 1
                                 plan.subtasks.forEach { st ->
-                                    st.scheduledSlots.clear()
-                                    repeat(st.hours) {
-                                        if (cursor.isBefore(end)) {
-                                            st.scheduledSlots.add(cursor)
-                                            SharedCalendar.items.add(
-                                                CalendarEntry(
-                                                    title = "${plan.title}: ${st.name}",
-                                                    start = cursor,
-                                                    end = cursor.plusHours(1),
-                                                    assessmentId = plan.id,
-                                                    subtaskName = st.name
-                                                )
-                                            )
-                                            cursor = cursor.plusHours(1)
-                                            placed++
-                                        }
-                                    }
+                                    SharedCalendar.items.add(
+                                        CalendarEntry(
+                                            title = "${plan.title}: ${st.name} — DUE",
+                                            start = st.dueAt,
+                                            end = st.dueAt.plusHours(1),
+                                            assessmentId = plan.id,
+                                            subtaskName = st.name
+                                        )
+                                    )
+                                    added++
                                 }
+
                                 Toast.makeText(
                                     context,
-                                    "Scheduled $placed hour(s) across ${plan.subtasks.size} subtask(s).",
+                                    "Added $added calendar item(s).",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 showAuto = false
                             }
-                        ) { Text("Schedule") }
+                        ) { Text("Add to Calendar") }
                     },
                     dismissButton = { TextButton(onClick = { showAuto = false }) { Text("Cancel") } }
                 )
-
-                if (openWheel) {
-                    DateTimeWheelDialog(
-                        initial = startAt,
-                        onConfirm = { picked -> startAt = picked; openWheel = false },
-                        onDismiss = { openWheel = false }
-                    )
-                }
             }
         }
     }
@@ -304,7 +301,7 @@ fun PlanScreen() {
                         singleLine = true
                     )
                     Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { openWheel = true }) { Text("Due Date") }
+                    OutlinedButton(onClick = { openWheel = true }) { Text("Pick due date") }
                     Text("Note: stored in memory only (clears on restart).", style = MaterialTheme.typography.bodySmall)
                 }
             },
@@ -339,11 +336,10 @@ fun PlanScreen() {
 
 /* ===================== Helpers & models ===================== */
 
-// Simple models; use MutableList but back them with state lists to trigger recomposition
+// Subtask now stores a DUE DATE (no hours / no scheduled slots)
 private data class Subtask(
     val name: String,
-    val hours: Int,
-    val scheduledSlots: MutableList<LocalDateTime> = mutableStateListOf()
+    val dueAt: LocalDateTime
 )
 
 private data class Assessment(
@@ -353,7 +349,7 @@ private data class Assessment(
     val subtasks: MutableList<Subtask> = mutableStateListOf()
 )
 
-// Tiny shared calendar store (CalendarScreen can read this later)
+// Shared calendar store
 data class CalendarEntry(
     val title: String,
     val start: LocalDateTime,
@@ -371,13 +367,15 @@ private fun defaultNextHour(): LocalDateTime {
     return if (now.minute == 0) now.plusHours(1) else now.withMinute(0).plusHours(1)
 }
 
-/* ---------- Scrollable wheel Date/Time picker using NumberPicker ---------- */
+/* ---------- Date/Time wheel with optional min/max bounds ---------- */
 
 @Composable
 private fun DateTimeWheelDialog(
     initial: LocalDateTime,
     onConfirm: (LocalDateTime) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    min: LocalDateTime? = null,
+    max: LocalDateTime? = null
 ) {
     var year by remember { mutableIntStateOf(initial.year) }
     var month by remember { mutableIntStateOf(initial.monthValue) }
@@ -385,8 +383,10 @@ private fun DateTimeWheelDialog(
     var hour by remember { mutableIntStateOf(initial.hour) }
     var minute by remember { mutableIntStateOf(initial.minute) }
 
-    val minDT = remember { LocalDateTime.now().withSecond(0).withNano(0) }
-    val maxDT = remember { minDT.plusYears(1) }
+    // Bounds (default: now .. now+1y), but allow overrides
+    val defaultMin = remember { LocalDateTime.now().withSecond(0).withNano(0) }
+    val minDT = min ?: defaultMin
+    val maxDT = max ?: minDT.plusYears(1)
 
     val yearMin = minDT.year
     val yearMax = maxDT.year
@@ -405,13 +405,15 @@ private fun DateTimeWheelDialog(
     val hourMax = if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth) maxDT.hour else 23
     hour = hour.coerceIn(hourMin, hourMax)
 
-    val minuteMin = if (year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth && hour == minDT.hour) minDT.minute else 0
-    val minuteMax = if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth && hour == maxDT.hour) maxDT.minute else 59
+    val minuteMin =
+        if (year == yearMin && month == minDT.monthValue && day == minDT.dayOfMonth && hour == minDT.hour) minDT.minute else 0
+    val minuteMax =
+        if (year == yearMax && month == maxDT.monthValue && day == maxDT.dayOfMonth && hour == maxDT.hour) maxDT.minute else 59
     minute = minute.coerceIn(minuteMin, minuteMax)
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Due Date") },
+        title = { Text("Pick Date & Time") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -423,7 +425,8 @@ private fun DateTimeWheelDialog(
                     NumberWheel("Hour", hour, hourMin..hourMax, { hour = it }, Modifier.weight(1f))
                     NumberWheel("Minute", minute, minuteMin..minuteMax, { minute = it }, Modifier.weight(1f))
                 }
-                Text("Past time will auto-adjust to now.", style = MaterialTheme.typography.bodySmall)
+                Text("Range: ${minDT.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))} → ${maxDT.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}",
+                    style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
@@ -431,7 +434,7 @@ private fun DateTimeWheelDialog(
                 val picked = LocalDateTime.of(year, month, day, hour, minute)
                 val clamped = when {
                     picked.isBefore(minDT) -> minDT
-                    picked.isAfter(maxDT)  -> maxDT
+                    picked.isAfter(maxDT) -> maxDT
                     else -> picked
                 }
                 onConfirm(clamped)
