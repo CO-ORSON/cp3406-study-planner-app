@@ -7,7 +7,8 @@ import java.time.LocalDateTime
 data class AssessmentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
-    val dueAt: LocalDateTime
+    val dueAt: LocalDateTime,
+    @ColumnInfo(defaultValue = "") val remark: String = ""
 )
 
 @Entity(

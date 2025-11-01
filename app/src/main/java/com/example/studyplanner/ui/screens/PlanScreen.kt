@@ -56,12 +56,9 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         items(items, key = { it.id }) { plan ->
             val context = LocalContext.current
             var showDecompose by remember { mutableStateOf(false) }
-            var showAuto by remember { mutableStateOf(false) }   // now = "Remark" dialog
+            var showRemark by remember { mutableStateOf(false) }   // ← was showAuto
             var showDelete by remember { mutableStateOf(false) }
             var showEdit by remember { mutableStateOf(false) }
-
-            // remark per plan (in-memory only)
-            var remark by remember { mutableStateOf("") }
 
             // subtask edit/delete state
             var editingSubId by remember { mutableStateOf<Long?>(null) }
@@ -93,8 +90,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { showDecompose = true }) { Text("Decompose Tasks") }
-                        // changed: "Calendar info" -> "Remark"
-                        OutlinedButton(onClick = { showAuto = true }) { Text("Remark") }
+                        OutlinedButton(onClick = { showRemark = true }) { Text("Remark") }
                     }
 
                     if (plan.subtasks.isNotEmpty()) {
@@ -132,11 +128,11 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         }
                     }
 
-                    // (optional) show saved remark preview under card
-                    if (remark.isNotBlank()) {
+                    // ✅ show saved remark from DB
+                    if (plan.remark.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Remark: $remark",
+                            "Remark: ${plan.remark}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -320,36 +316,39 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // NEW: Remark dialog (uses showAuto)
-            if (showAuto) {
+            // NEW: Remark dialog (DB-backed)
+            if (showRemark) {
+                // start from DB value
+                var tmp by remember(plan.remark) { mutableStateOf(plan.remark) }
+
                 AlertDialog(
-                    onDismissRequest = { showAuto = false },
+                    onDismissRequest = { showRemark = false },
                     title = { Text("Remark for ${plan.title}") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = remark,
-                                onValueChange = { remark = it },
+                                value = tmp,
+                                onValueChange = { tmp = it },
                                 label = { Text("Write a note / remark") },
                                 minLines = 3
                             )
                             Text(
-                                "Tip: use this to record progress, lecturer comments, or exam scope.",
+                                "Tip: record progress, lecturer comments, or exam scope.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = {
-                            // here you could call vm.updateRemark(...) if your VM supports it
-                            Toast.makeText(context, "Remark saved (local)", Toast.LENGTH_SHORT).show()
-                            showAuto = false
+                            vm.updateRemark(plan.id, tmp)       // 🔥 persist to Room
+                            Toast.makeText(context, "Remark saved", Toast.LENGTH_SHORT).show()
+                            showRemark = false
                         }) {
                             Text("Save")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showAuto = false }) {
+                        TextButton(onClick = { showRemark = false }) {
                             Text("Cancel")
                         }
                     }

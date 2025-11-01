@@ -13,11 +13,18 @@ interface PlanDao {
     @Query("SELECT COUNT(*) FROM assessments")
     suspend fun countAssessments(): Int
 
-    @Insert suspend fun insertAssessment(a: AssessmentEntity): Long
-    @Update suspend fun updateAssessment(a: AssessmentEntity)
-    @Query("DELETE FROM assessments WHERE id = :id") suspend fun deleteAssessment(id: Long)
+    @Insert
+    suspend fun insertAssessment(a: AssessmentEntity): Long
 
-    @Insert suspend fun insertSubtask(s: SubtaskEntity): Long
+    @Update
+    suspend fun updateAssessment(a: AssessmentEntity)
+
+    @Query("DELETE FROM assessments WHERE id = :id")
+    suspend fun deleteAssessment(id: Long)
+
+    @Insert
+    suspend fun insertSubtask(s: SubtaskEntity): Long
+
     @Query("DELETE FROM subtasks WHERE assessmentId = :assessmentId")
     suspend fun deleteSubtasksFor(assessmentId: Long)
 
@@ -26,4 +33,7 @@ interface PlanDao {
 
     @Query("DELETE FROM subtasks WHERE id = :subtaskId")
     suspend fun deleteSubtask(subtaskId: Long)
+
+    @Query("UPDATE assessments SET remark = :remark WHERE id = :assessmentId")
+    suspend fun updateAssessmentRemark(assessmentId: Long, remark: String)
 }

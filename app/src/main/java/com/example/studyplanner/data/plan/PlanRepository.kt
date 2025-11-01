@@ -20,7 +20,7 @@ class PlanRepository(private val dao: PlanDao) {
 
     // Pass-throughs to DAO (add inside PlanRepository)
     suspend fun updateSubtask(
-        assessmentId: Long,            // kept for symmetry; not required by DAO
+        assessmentId: Long,
         subtaskId: Long,
         name: String,
         dueAt: LocalDateTime
@@ -29,10 +29,13 @@ class PlanRepository(private val dao: PlanDao) {
     }
 
     suspend fun deleteSubtask(
-        assessmentId: Long,            // kept for symmetry; not required by DAO
+        assessmentId: Long,
         subtaskId: Long
     ) {
         dao.deleteSubtask(subtaskId)
     }
 
+    suspend fun updateRemark(assessmentId: Long, remark: String) {
+        dao.updateAssessmentRemark(assessmentId, remark)
+    }
 }

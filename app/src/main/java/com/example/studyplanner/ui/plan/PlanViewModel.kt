@@ -11,8 +11,19 @@ import java.time.LocalDateTime
 class PlanViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = PlanRepository(PlanDb.get(app).dao())
 
-    data class SubtaskUi(val id: Long, val name: String, val dueAt: LocalDateTime)
-    data class AssessmentUi(val id: Long, val title: String, val dueAt: LocalDateTime, val subtasks: List<SubtaskUi>)
+    data class SubtaskUi(
+        val id: Long,
+        val name: String,
+        val dueAt: LocalDateTime
+    )
+
+    data class AssessmentUi(
+        val id: Long,
+        val title: String,
+        val dueAt: LocalDateTime,
+        val remark: String,
+        val subtasks: List<SubtaskUi>
+    )
 
     val items: StateFlow<List<AssessmentUi>> =
         repo.items.map { list ->
@@ -21,7 +32,10 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
                     id = aw.assessment.id,
                     title = aw.assessment.title,
                     dueAt = aw.assessment.dueAt,
-                    subtasks = aw.subtasks.map { SubtaskUi(it.id, it.name, it.dueAt) }
+                    remark = aw.assessment.remark,
+                    subtasks = aw.subtasks.map { st ->
+                        SubtaskUi(st.id, st.name, st.dueAt)
+                    }
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -53,4 +67,9 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
     ) = viewModelScope.launch {
         repo.deleteSubtask(assessmentId, subtaskId)
     }
+
+    fun updateRemark(assessmentId: Long, remark: String) =
+        viewModelScope.launch {
+            repo.updateRemark(assessmentId, remark)
+        }
 }
