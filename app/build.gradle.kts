@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -44,7 +45,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlin {
-        jvmToolchain(17) // Or your desired JDK version, e.g., 8, 11, 17, 21
+        jvmToolchain(17)
     }
 }
 
@@ -70,6 +71,15 @@ dependencies {
 
     // Optional icons
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
+
+    // --- Added for Room ---
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
+    // --- Added for ViewModel + lifecycle in Compose ---
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

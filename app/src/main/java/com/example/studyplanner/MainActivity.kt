@@ -12,9 +12,11 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.*
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.studyplanner.ui.NavRoute
 import com.example.studyplanner.ui.screens.CalendarScreen
 import com.example.studyplanner.ui.screens.FocusScreen
@@ -40,8 +42,8 @@ fun AppScaffold() {
 
     val items = listOf(
         NavRoute.Plan,
-        NavRoute.Focus,
         NavRoute.Calendar,
+        NavRoute.Focus,
         NavRoute.Insights
     )
 
@@ -53,14 +55,18 @@ fun AppScaffold() {
         },
         bottomBar = {
             NavigationBar {
-                val currentRoute = currentBackStackEntryAsState(navController).value?.destination?.route
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route
                 items.forEach { item ->
                     val selected = currentRoute == item.route
                     NavigationBarItem(
                         selected = selected,
                         onClick = {
-                            if (!selected) navController.navigate(item.route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            // Keep-alive navigation for top-level destinations
+                            navController.navigate(item.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
                                 launchSingleTop = true
                                 restoreState = true
                             }
@@ -68,8 +74,8 @@ fun AppScaffold() {
                         icon = {
                             when (item) {
                                 NavRoute.Plan -> Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = item.label)
-                                NavRoute.Focus -> Icon(Icons.Filled.Timer, contentDescription = item.label)
                                 NavRoute.Calendar -> Icon(Icons.Filled.CalendarMonth, contentDescription = item.label)
+                                NavRoute.Focus -> Icon(Icons.Filled.Timer, contentDescription = item.label)
                                 NavRoute.Insights -> Icon(Icons.Filled.Insights, contentDescription = item.label)
                             }
                         },
@@ -85,14 +91,9 @@ fun AppScaffold() {
             modifier = Modifier.padding(inner)
         ) {
             composable(NavRoute.Plan.route) { PlanScreen() }
-            composable(NavRoute.Focus.route) { FocusScreen() }
             composable(NavRoute.Calendar.route) { CalendarScreen() }
+            composable(NavRoute.Focus.route) { FocusScreen() }
             composable(NavRoute.Insights.route) { InsightsScreen() }
         }
     }
 }
-
-// Helper to get current route (Compose Nav)
-@Composable
-fun currentBackStackEntryAsState(navController: NavHostController)
-        : State<NavBackStackEntry?> = navController.currentBackStackEntryAsState()
