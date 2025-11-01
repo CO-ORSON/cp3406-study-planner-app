@@ -2,6 +2,7 @@ package com.example.studyplanner.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,7 +29,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
 
-// ------------- NEW: UI-only calendar model -------------
 private data class CalendarMarkUi(
     val id: Long,
     val title: String,
@@ -41,14 +42,14 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
     val today = LocalDate.now()
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
 
-    // 1) this is your real VM data: List<AssessmentUi>
+    // selected day
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
+
     val assessments by vm.items.collectAsStateWithLifecycle()
 
-    // 2) flatten Assessment + its subtasks => calendar marks
     val marks = remember(assessments) {
         assessments.flatMap { a ->
             buildList {
-                // assessment itself
                 add(
                     CalendarMarkUi(
                         id = a.id,
@@ -57,7 +58,6 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                         start = a.dueAt
                     )
                 )
-                // its subtasks
                 a.subtasks.forEach { s ->
                     add(
                         CalendarMarkUi(
@@ -72,21 +72,15 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
         }
     }
 
-    // 3) per-day markers
     val assignmentsByDate = remember(marks) {
-        marks
-            .filter { it.isAssessment }
-            .groupBy { it.start.toLocalDate() }
+        marks.filter { it.isAssessment }.groupBy { it.start.toLocalDate() }
     }
     val subtasksByDate = remember(marks) {
-        marks
-            .filter { !it.isAssessment }
-            .groupBy { it.start.toLocalDate() }
+        marks.filter { !it.isAssessment }.groupBy { it.start.toLocalDate() }
     }
 
     val monthTitleFmt = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
 
-    // 4) month list
     val monthStart = currentMonth.atDay(1).atStartOfDay()
     val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
     val monthList = remember(marks, currentMonth) {
@@ -95,7 +89,6 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
             .sortedBy { it.start }
     }
 
-    // 5) counters
     val assignmentMarksThisMonth = remember(monthList) {
         monthList.count { it.isAssessment }
     }
@@ -116,7 +109,10 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                IconButton(onClick = {
+                    currentMonth = currentMonth.minusMonths(1)
+                    selectedDate = null
+                }) {
                     Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous month")
                 }
                 Text(
@@ -124,7 +120,10 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
-                IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                IconButton(onClick = {
+                    currentMonth = currentMonth.plusMonths(1)
+                    selectedDate = null
+                }) {
                     Icon(Icons.Filled.ChevronRight, contentDescription = "Next month")
                 }
             }
@@ -137,7 +136,13 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AssistChip(onClick = { currentMonth = YearMonth.now() }, label = { Text("Today") })
+                AssistChip(
+                    onClick = {
+                        currentMonth = YearMonth.now()
+                        selectedDate = LocalDate.now()
+                    },
+                    label = { Text("Today") }
+                )
                 Text(
                     "$assignmentMarksThisMonth assignment(s) • $subtaskMarksThisMonth subtask(s)",
                     style = MaterialTheme.typography.labelLarge
@@ -196,6 +201,7 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                                 val isToday = date == today
                                 val hasAssignment = assignmentsByDate.containsKey(date)
                                 val hasSubtasks = subtasksByDate.containsKey(date)
+                                val isSelected = selectedDate == date
 
                                 Box(
                                     Modifier
@@ -206,7 +212,8 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                                         date = date,
                                         isToday = isToday,
                                         hasAssignment = hasAssignment,
-                                        hasSubtasks = hasSubtasks
+                                        hasSubtasks = hasSubtasks,
+                                        isSelected = isSelected
                                     )
                                 }
                             } else {
@@ -238,7 +245,14 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
                     color = bg,
                     contentColor = fg,
                     shape = RoundedCornerShape(12.dp),
-                    tonalElevation = if (entry.isAssessment) 4.dp else 0.dp
+                    tonalElevation = if (entry.isAssessment) 4.dp else 0.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val d = entry.start.toLocalDate()
+                            selectedDate = d
+                            currentMonth = YearMonth.from(d)
+                        }
                 ) {
                     Row(
                         Modifier
@@ -274,26 +288,50 @@ private fun DayCell(
     date: LocalDate,
     isToday: Boolean,
     hasAssignment: Boolean,
-    hasSubtasks: Boolean
+    hasSubtasks: Boolean,
+    isSelected: Boolean
 ) {
     val cs = MaterialTheme.colorScheme
-    val outline = if (isToday) cs.primary else cs.outlineVariant
+    // orange for selected
+    val orange = Color(0xFFFFA000)
+
+    val outline = when {
+        isSelected -> orange
+        isToday -> cs.primary
+        else -> cs.outlineVariant
+    }
+
+    val borderWidth = when {
+        isSelected -> 3.dp
+        isToday -> 2.dp
+        else -> 1.dp
+    }
 
     Box(
         Modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(10.dp))
             .border(
-                width = if (isToday) 2.dp else 1.dp,
+                width = borderWidth,
                 color = outline,
                 shape = RoundedCornerShape(10.dp)
+            )
+            .background(
+                when {
+                    isSelected -> orange.copy(alpha = 0.16f)
+                    else -> cs.surface
+                }
             )
             .padding(6.dp)
     ) {
         Text(
             text = date.dayOfMonth.toString(),
             style = MaterialTheme.typography.bodyLarge,
-            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+            fontWeight = when {
+                isSelected -> FontWeight.ExtraBold
+                isToday -> FontWeight.Bold
+                else -> FontWeight.Normal
+            }
         )
 
         Column(
