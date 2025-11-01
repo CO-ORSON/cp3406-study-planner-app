@@ -32,7 +32,9 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
     var showAdd by remember { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -54,11 +56,14 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         items(items, key = { it.id }) { plan ->
             val context = LocalContext.current
             var showDecompose by remember { mutableStateOf(false) }
-            var showAuto by remember { mutableStateOf(false) }
+            var showAuto by remember { mutableStateOf(false) }   // now = "Remark" dialog
             var showDelete by remember { mutableStateOf(false) }
             var showEdit by remember { mutableStateOf(false) }
 
-            // --- Minimal new state for subtask edit/delete ---
+            // remark per plan (in-memory only)
+            var remark by remember { mutableStateOf("") }
+
+            // subtask edit/delete state
             var editingSubId by remember { mutableStateOf<Long?>(null) }
             var editingSubName by remember { mutableStateOf("") }
             var editingSubDue by remember { mutableStateOf(plan.dueAt) }
@@ -66,7 +71,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
 
             var deletingSubId by remember { mutableStateOf<Long?>(null) }
             var deletingSubName by remember { mutableStateOf("") }
-            // --------------------------------------------------
 
             Card {
                 Column(Modifier.padding(16.dp)) {
@@ -89,7 +93,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { showDecompose = true }) { Text("Decompose Tasks") }
-                        OutlinedButton(onClick = { showAuto = true }) { Text("Add to calendar") }
+                        // changed: "Calendar info" -> "Remark"
+                        OutlinedButton(onClick = { showAuto = true }) { Text("Remark") }
                     }
 
                     if (plan.subtasks.isNotEmpty()) {
@@ -126,10 +131,20 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                             }
                         }
                     }
+
+                    // (optional) show saved remark preview under card
+                    if (remark.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Remark: $remark",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
-            // Edit assessment dialog → unchanged
+            // Edit assessment dialog
             if (showEdit) {
                 var title by remember { mutableStateOf(plan.title) }
                 var dueAt by remember { mutableStateOf(plan.dueAt) }
@@ -174,7 +189,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // --- Minimal new: Edit subtask dialog (reuses existing wheel) ---
+            // Edit subtask dialog
             if (editingSubId != null) {
                 val canSaveSub = editingSubName.isNotBlank() && editingSubDue <= plan.dueAt
                 AlertDialog(
@@ -219,9 +234,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     )
                 }
             }
-            // ----------------------------------------------------------------
 
-            // Delete assessment dialog → unchanged
+            // Delete assessment dialog
             if (showDelete) {
                 AlertDialog(
                     onDismissRequest = { showDelete = false },
@@ -238,7 +252,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 )
             }
 
-            // --- Minimal new: Delete subtask dialog ---
+            // Delete subtask dialog
             if (deletingSubId != null) {
                 AlertDialog(
                     onDismissRequest = { deletingSubId = null },
@@ -254,9 +268,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     dismissButton = { TextButton(onClick = { deletingSubId = null }) { Text("Cancel") } }
                 )
             }
-            // ---------------------------------------------------------------
 
-            // Decompose dialog → add subtask via VM (unchanged)
+            // Decompose dialog
             if (showDecompose) {
                 var name by remember { mutableStateOf("") }
                 var dueAt by remember { mutableStateOf(minOf(defaultNextHour(), plan.dueAt)) }
@@ -276,7 +289,10 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                             )
                             Text("Due at: ${dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
                             OutlinedButton(onClick = { openWheel = true }) { Text("Pick subtask due date") }
-                            Text("Tip: subtask due should not exceed the assessment due date.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Tip: subtask due should not exceed the assessment due date.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     },
                     confirmButton = {
@@ -304,67 +320,45 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Add to calendar → uses SharedCalendar (unchanged)
+            // NEW: Remark dialog (uses showAuto)
             if (showAuto) {
-                val now = LocalDateTime.now()
-                val valid = plan.dueAt.isAfter(now)
-
                 AlertDialog(
                     onDismissRequest = { showAuto = false },
-                    title = { Text("Sync due dates to Calendar") },
+                    title = { Text("Remark for ${plan.title}") },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("This will add calendar entries for:", style = MaterialTheme.typography.bodyMedium)
-                            Text("• Assessment due: ${plan.dueAt.format(fmt)}", style = MaterialTheme.typography.bodySmall)
-                            if (plan.subtasks.isEmpty()) {
-                                Text("• No subtasks yet (only assessment will be added).", style = MaterialTheme.typography.bodySmall)
-                            } else {
-                                Text("• ${plan.subtasks.size} subtask due date(s).", style = MaterialTheme.typography.bodySmall)
-                            }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = remark,
+                                onValueChange = { remark = it },
+                                label = { Text("Write a note / remark") },
+                                minLines = 3
+                            )
+                            Text(
+                                "Tip: use this to record progress, lecturer comments, or exam scope.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     },
                     confirmButton = {
-                        TextButton(
-                            enabled = valid,
-                            onClick = {
-                                SharedCalendar.items.removeAll { it.assessmentId == plan.id }
-
-                                SharedCalendar.items.add(
-                                    CalendarEntry(
-                                        title = "${plan.title} — DUE",
-                                        start = plan.dueAt,
-                                        end = plan.dueAt.plusHours(1),
-                                        assessmentId = plan.id,
-                                        subtaskName = "Assessment due"
-                                    )
-                                )
-
-                                var added = 1
-                                plan.subtasks.forEach { st ->
-                                    SharedCalendar.items.add(
-                                        CalendarEntry(
-                                            title = "${plan.title}: ${st.name} — DUE",
-                                            start = st.dueAt,
-                                            end = st.dueAt.plusHours(1),
-                                            assessmentId = plan.id,
-                                            subtaskName = st.name
-                                        )
-                                    )
-                                    added++
-                                }
-
-                                Toast.makeText(context, "Added $added calendar item(s).", Toast.LENGTH_SHORT).show()
-                                showAuto = false
-                            }
-                        ) { Text("Add to Calendar") }
+                        TextButton(onClick = {
+                            // here you could call vm.updateRemark(...) if your VM supports it
+                            Toast.makeText(context, "Remark saved (local)", Toast.LENGTH_SHORT).show()
+                            showAuto = false
+                        }) {
+                            Text("Save")
+                        }
                     },
-                    dismissButton = { TextButton(onClick = { showAuto = false }) { Text("Cancel") } }
+                    dismissButton = {
+                        TextButton(onClick = { showAuto = false }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }
     }
 
-    // Add Assessment dialog → unchanged
+    // Add Assessment dialog
     if (showAdd) {
         val context = LocalContext.current
         var title by remember { mutableStateOf("Assessment ${items.size + 1}") }
@@ -412,26 +406,12 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
     }
 }
 
-/* ===================== Helpers & models (keep these) ===================== */
-
-data class CalendarEntry(
-    val title: String,
-    val start: LocalDateTime,
-    val end: LocalDateTime,
-    val assessmentId: Long,
-    val subtaskName: String
-)
-
-object SharedCalendar {
-    val items = mutableStateListOf<CalendarEntry>()
-}
+/* ===================== Helpers (same as before) ===================== */
 
 private fun defaultNextHour(): LocalDateTime {
     val now = LocalDateTime.now().withSecond(0).withNano(0)
     return if (now.minute == 0) now.plusHours(1) else now.withMinute(0).plusHours(1)
 }
-
-/* ---------- Date/Time wheel with optional min/max bounds ---------- */
 
 @Composable
 private fun DateTimeWheelDialog(
@@ -520,7 +500,9 @@ private fun NumberWheel(
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         AndroidView(
-            modifier = Modifier.height(120.dp).fillMaxWidth(),
+            modifier = Modifier
+                .height(120.dp)
+                .fillMaxWidth(),
             factory = { context ->
                 NumberPicker(context).apply {
                     minValue = range.first
