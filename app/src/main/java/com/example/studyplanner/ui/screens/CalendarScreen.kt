@@ -15,29 +15,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.studyplanner.ui.plan.PlanViewModel
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
 
 @Composable
-fun CalendarScreen() {
+fun CalendarScreen(vm: PlanViewModel = viewModel()) {
     val cs = MaterialTheme.colorScheme
     val today = LocalDate.now()
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
 
-    // pull events from shared store
-    val all = SharedCalendar.items
+    // Pull persisted data from Room via ViewModel
+    val items by vm.items.collectAsStateWithLifecycle()
 
-    // separate assignment-due vs subtask-due
-    val assignmentsByDate = remember(all.size) {
-        all.filter { it.subtaskName == "Assessment due" }
-            .groupBy { it.start.toLocalDate() }
+    // Build quick lookups for day markers (assessment vs subtasks)
+    val assignmentDates = remember(items) {
+        items.map { it.dueAt.toLocalDate() }.toSet()
     }
-    val subtasksByDate = remember(all.size) {
-        all.filter { it.subtaskName != "Assessment due" }
-            .groupBy { it.start.toLocalDate() }
+    val subtaskDates = remember(items) {
+        items.flatMap { it.subtasks }.map { it.dueAt.toLocalDate() }.toSet()
     }
 
     val monthTitleFmt = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
@@ -70,8 +72,14 @@ fun CalendarScreen() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             AssistChip(onClick = { currentMonth = YearMonth.now() }, label = { Text("Today") })
-            val monthEventsCount = remember(all.size, currentMonth) {
-                all.count { it.start.toLocalDate().withDayOfMonth(1) == currentMonth.atDay(1) }
+
+            // Count events in the visible month (assessment + subtasks)
+            val monthStart = currentMonth.atDay(1).atStartOfDay()
+            val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
+            val monthEventsCount = remember(items, currentMonth) {
+                val assessCount = items.count { it.dueAt in monthStart..monthEnd }
+                val subCount = items.sumOf { it.subtasks.count { st -> st.dueAt in monthStart..monthEnd } }
+                assessCount + subCount
             }
             Text("$monthEventsCount item(s)", style = MaterialTheme.typography.labelLarge)
         }
@@ -84,7 +92,6 @@ fun CalendarScreen() {
             DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
         )
         Row(Modifier.fillMaxWidth()) {
-            // use a plain 'for' loop so RowScope.weight() remains available
             for (dow in weekdays) {
                 Box(
                     Modifier
@@ -119,10 +126,9 @@ fun CalendarScreen() {
                         if (dayNum in 1..daysInMonth) {
                             val date = currentMonth.atDay(dayNum)
                             val isToday = date == today
-                            val hasAssignment = assignmentsByDate.containsKey(date)
-                            val hasSubtasks = subtasksByDate.containsKey(date)
+                            val hasAssignment = assignmentDates.contains(date)
+                            val hasSubtasks = subtaskDates.contains(date)
 
-                            // weight at call site (Option A)
                             Box(Modifier.weight(1f).aspectRatio(1f)) {
                                 DayCell(
                                     date = date,
@@ -132,7 +138,6 @@ fun CalendarScreen() {
                                 )
                             }
                         } else {
-                            // empty cell keeps the grid aligned
                             Box(Modifier.weight(1f).aspectRatio(1f))
                         }
                     }
@@ -143,13 +148,41 @@ fun CalendarScreen() {
 
         Spacer(Modifier.height(12.dp))
 
-        // Optional: list entries for the month below, ordered
+        // Monthly list from DB items (assessment first, then subtasks), ordered
         val timeFmt = remember { DateTimeFormatter.ofPattern("EEE, dd MMM • HH:mm") }
         val monthStart = currentMonth.atDay(1).atStartOfDay()
         val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
-        val monthList = remember(all.size, currentMonth) {
-            all.filter { it.start.isAfter(monthStart.minusSeconds(1)) && it.start.isBefore(monthEnd.plusSeconds(1)) }
-                .sortedBy { it.start }
+        data class CalendarListItem(
+            val title: String,
+            val start: LocalDateTime,
+            val isAssessment: Boolean
+        )
+
+        val monthList = remember(items, currentMonth) {
+            buildList {
+                items.forEach { a ->
+                    if (a.dueAt in monthStart..monthEnd) {
+                        add(
+                            CalendarListItem(
+                                title = "${a.title} — DUE",
+                                start = a.dueAt,
+                                isAssessment = true
+                            )
+                        )
+                    }
+                    a.subtasks.forEach { st ->
+                        if (st.dueAt in monthStart..monthEnd) {
+                            add(
+                                CalendarListItem(
+                                    title = "${a.title}: ${st.name} — DUE",
+                                    start = st.dueAt,
+                                    isAssessment = false
+                                )
+                            )
+                        }
+                    }
+                }
+            }.sortedBy { it.start }
         }
 
         if (monthList.isNotEmpty()) {
@@ -158,14 +191,13 @@ fun CalendarScreen() {
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 monthList.forEach { e ->
-                    val isAssessment = e.subtaskName == "Assessment due"
-                    val bg = if (isAssessment) cs.errorContainer else cs.secondaryContainer
-                    val fg = if (isAssessment) cs.onErrorContainer else cs.onSecondaryContainer
+                    val bg = if (e.isAssessment) cs.errorContainer else cs.secondaryContainer
+                    val fg = if (e.isAssessment) cs.onErrorContainer else cs.onSecondaryContainer
                     Surface(
                         color = bg,
                         contentColor = fg,
                         shape = RoundedCornerShape(12.dp),
-                        tonalElevation = if (isAssessment) 4.dp else 0.dp
+                        tonalElevation = if (e.isAssessment) 4.dp else 0.dp
                     ) {
                         Row(
                             Modifier
@@ -200,7 +232,7 @@ private fun DayCell(
 
     Box(
         Modifier
-            .fillMaxSize() // <-- moved weight/aspectRatio to the call site
+            .fillMaxSize()
             .clip(RoundedCornerShape(10.dp))
             .border(
                 width = if (isToday) 2.dp else 1.dp,
@@ -216,7 +248,7 @@ private fun DayCell(
             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
         )
 
-        // Markers at bottom: assignment is more salient than subtasks
+        // Markers at bottom: assessment is more salient than subtasks
         Column(
             Modifier.align(Alignment.BottomCenter),
             horizontalAlignment = Alignment.CenterHorizontally
