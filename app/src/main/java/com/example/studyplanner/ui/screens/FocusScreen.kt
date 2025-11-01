@@ -5,15 +5,16 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.widget.NumberPicker
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
@@ -24,13 +25,19 @@ fun FocusScreen() {
     val notificationManager =
         remember { context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
 
+    // --- Custom time (wheel) 5..179 minutes (<180) ---
+    var selectedMinutes by rememberSaveable { mutableStateOf(45) }
+
+    // --- Timer state ---
     var running by rememberSaveable { mutableStateOf(false) }
-    val totalSeconds = 45 * 60
-    var remaining by rememberSaveable { mutableStateOf(totalSeconds) }
+    var remaining by rememberSaveable { mutableStateOf(selectedMinutes * 60) }
 
-    var dndOn by rememberSaveable { mutableStateOf(false) }
+    // Keep remaining in sync when length changes (only if idle/paused)
+    LaunchedEffect(selectedMinutes) {
+        if (!running) remaining = max(1, selectedMinutes * 60)
+    }
 
-    // Simple countdown tick (1s)
+    // 1-second tick
     LaunchedEffect(running) {
         while (running && remaining > 0) {
             delay(1_000)
@@ -42,37 +49,69 @@ fun FocusScreen() {
         }
     }
 
+    val totalSeconds = max(1, selectedMinutes * 60)
+    val paused = !running && remaining in 1 until totalSeconds
+
     val mm = remaining / 60
     val ss = remaining % 60
     val progress = 1f - (remaining.toFloat() / totalSeconds.toFloat())
 
+    // --- DND toggle ---
+    var dndOn by rememberSaveable { mutableStateOf(false) }
+
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("Focus", style = MaterialTheme.typography.headlineSmall)
-        Text("Next session: CP3406 — Part A Draft")
 
+        // --- Minutes wheel (NumberPicker) ---
+        AndroidView<NumberPicker>(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+            factory = { ctx: Context ->
+                NumberPicker(ctx).apply {
+                    minValue = 5
+                    maxValue = 179 // strictly < 180
+                    value = selectedMinutes
+                    wrapSelectorWheel = false
+                    isEnabled = !running
+                    setOnValueChangedListener { _, _, newVal ->
+                        selectedMinutes = newVal
+                    }
+                }
+            },
+            update = { picker ->
+                if (picker.value != selectedMinutes) picker.value = selectedMinutes
+                picker.isEnabled = !running
+            }
+        )
+
+        // --- Timer display ---
         Text(String.format("%02d:%02d", mm, ss), style = MaterialTheme.typography.displaySmall)
 
         LinearProgressIndicator(
-        progress = { progress },
-        modifier = Modifier.fillMaxWidth(),
-        color = ProgressIndicatorDefaults.linearColor,
-        trackColor = ProgressIndicatorDefaults.linearTrackColor,
-        strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth()
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // --- Controls (DND button pushed to the right) ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             if (!running) {
                 Button(
                     onClick = {
                         if (remaining == 0) remaining = totalSeconds
                         running = true
                     }
-                ) { Text("Start") }
+                ) { Text(if (paused) "Resume" else "Start") }
             } else {
-                OutlinedButton(onClick = { running = false }) { Text("Stop") }
+                OutlinedButton(onClick = { running = false }) { Text("Pause") }
             }
 
             OutlinedButton(
@@ -82,11 +121,13 @@ fun FocusScreen() {
                 }
             ) { Text("Reset") }
 
+            // Push the DND chip to the far right
+            Spacer(modifier = Modifier.weight(1f))
+
             AssistChip(
                 onClick = {
                     val hasAccess = notificationManager.isNotificationPolicyAccessGranted
                     if (!hasAccess) {
-                        // Open DND access settings
                         context.startActivity(
                             Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -97,7 +138,6 @@ fun FocusScreen() {
                             Toast.LENGTH_SHORT
                         ).show()
                     } else {
-                        // Toggle DND
                         dndOn = !dndOn
                         val mode = if (dndOn)
                             NotificationManager.INTERRUPTION_FILTER_NONE
@@ -121,7 +161,5 @@ fun FocusScreen() {
                 label = { Text(if (dndOn) "Disable DND" else "Enable DND") }
             )
         }
-
-        Text("Tip: Keep it simple—45 minutes focus + 10–15 minutes break.")
     }
 }
