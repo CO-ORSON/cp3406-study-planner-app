@@ -40,11 +40,24 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         item {
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Plan", style = MaterialTheme.typography.headlineSmall)
-                IconButton(onClick = { showAdd = true }) {
-                    Icon(Icons.Filled.PlaylistAddCircle, contentDescription = "Add assessment")
+                Text(
+                    "Plan",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { showAdd = true },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.PlaylistAddCircle,
+                        contentDescription = "Add assessment",
+                        modifier = Modifier.size(30.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
             Text(
@@ -56,11 +69,10 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         items(items, key = { it.id }) { plan ->
             val context = LocalContext.current
             var showDecompose by remember { mutableStateOf(false) }
-            var showRemark by remember { mutableStateOf(false) }   // ← was showAuto
+            var showRemark by remember { mutableStateOf(false) }
             var showDelete by remember { mutableStateOf(false) }
             var showEdit by remember { mutableStateOf(false) }
 
-            // subtask edit/delete state
             var editingSubId by remember { mutableStateOf<Long?>(null) }
             var editingSubName by remember { mutableStateOf("") }
             var editingSubDue by remember { mutableStateOf(plan.dueAt) }
@@ -128,7 +140,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         }
                     }
 
-                    // ✅ show saved remark from DB
                     if (plan.remark.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -140,7 +151,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Edit assessment dialog
             if (showEdit) {
                 var title by remember { mutableStateOf(plan.title) }
                 var dueAt by remember { mutableStateOf(plan.dueAt) }
@@ -185,7 +195,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Edit subtask dialog
             if (editingSubId != null) {
                 val canSaveSub = editingSubName.isNotBlank() && editingSubDue <= plan.dueAt
                 AlertDialog(
@@ -231,7 +240,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Delete assessment dialog
             if (showDelete) {
                 AlertDialog(
                     onDismissRequest = { showDelete = false },
@@ -248,7 +256,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 )
             }
 
-            // Delete subtask dialog
             if (deletingSubId != null) {
                 AlertDialog(
                     onDismissRequest = { deletingSubId = null },
@@ -265,7 +272,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 )
             }
 
-            // Decompose dialog
             if (showDecompose) {
                 var name by remember { mutableStateOf("") }
                 var dueAt by remember { mutableStateOf(minOf(defaultNextHour(), plan.dueAt)) }
@@ -316,9 +322,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // NEW: Remark dialog (DB-backed)
             if (showRemark) {
-                // start from DB value
                 var tmp by remember(plan.remark) { mutableStateOf(plan.remark) }
 
                 AlertDialog(
@@ -340,7 +344,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     },
                     confirmButton = {
                         TextButton(onClick = {
-                            vm.updateRemark(plan.id, tmp)       // 🔥 persist to Room
+                            vm.updateRemark(plan.id, tmp)
                             Toast.makeText(context, "Remark saved", Toast.LENGTH_SHORT).show()
                             showRemark = false
                         }) {
@@ -357,7 +361,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         }
     }
 
-    // Add Assessment dialog
     if (showAdd) {
         val context = LocalContext.current
         var title by remember { mutableStateOf("Assessment ${items.size + 1}") }
