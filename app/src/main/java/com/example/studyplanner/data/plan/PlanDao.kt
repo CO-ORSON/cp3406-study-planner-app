@@ -2,6 +2,7 @@ package com.example.studyplanner.data.plan
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDateTime
 
 @Dao
 interface PlanDao {
@@ -19,4 +20,10 @@ interface PlanDao {
     @Insert suspend fun insertSubtask(s: SubtaskEntity): Long
     @Query("DELETE FROM subtasks WHERE assessmentId = :assessmentId")
     suspend fun deleteSubtasksFor(assessmentId: Long)
+
+    @Query("UPDATE subtasks SET name = :name, dueAt = :dueAt WHERE id = :subtaskId")
+    suspend fun updateSubtask(subtaskId: Long, name: String, dueAt: LocalDateTime)
+
+    @Query("DELETE FROM subtasks WHERE id = :subtaskId")
+    suspend fun deleteSubtask(subtaskId: Long)
 }

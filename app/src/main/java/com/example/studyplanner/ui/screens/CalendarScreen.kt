@@ -33,7 +33,7 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
     val today = LocalDate.now()
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
 
-    // DB items (for "assignments this month" count)
+    // DB items (kept; may be used elsewhere)
     val items by vm.items.collectAsStateWithLifecycle()
 
     // In-memory calendar marks created by PlanScreen ("Add to calendar")
@@ -58,10 +58,12 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
         all.filter { it.start in monthStart..monthEnd }.sortedBy { it.start }
     }
 
-    // Counters
-    val monthMarksCount = monthList.size
-    val assignmentsThisMonth = remember(items, currentMonth) {
-        items.count { it.dueAt in monthStart..monthEnd }
+    // NEW: Counters split into assignments vs subtasks (from calendar marks)
+    val assignmentMarksThisMonth = remember(monthList) {
+        monthList.count { it.subtaskName == "Assessment due" }
+    }
+    val subtaskMarksThisMonth = remember(monthList) {
+        monthList.size - assignmentMarksThisMonth
     }
 
     LazyColumn(
@@ -98,7 +100,8 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
             ) {
                 AssistChip(onClick = { currentMonth = YearMonth.now() }, label = { Text("Today") })
                 Text(
-                    "$monthMarksCount mark(s) • $assignmentsThisMonth assignment(s)",
+                    // CHANGED: from "x mark(s) • y assignment(s)" to "x assignment(s) • y subtask(s)"
+                    "$assignmentMarksThisMonth assignment(s) • $subtaskMarksThisMonth subtask(s)",
                     style = MaterialTheme.typography.labelLarge
                 )
             }

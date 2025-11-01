@@ -17,4 +17,22 @@ class PlanRepository(private val dao: PlanDao) {
         dao.insertSubtask(SubtaskEntity(assessmentId = assessmentId, name = name, dueAt = dueAt))
 
     suspend fun countAssessments(): Int = dao.countAssessments()
+
+    // Pass-throughs to DAO (add inside PlanRepository)
+    suspend fun updateSubtask(
+        assessmentId: Long,            // kept for symmetry; not required by DAO
+        subtaskId: Long,
+        name: String,
+        dueAt: LocalDateTime
+    ) {
+        dao.updateSubtask(subtaskId, name, dueAt)
+    }
+
+    suspend fun deleteSubtask(
+        assessmentId: Long,            // kept for symmetry; not required by DAO
+        subtaskId: Long
+    ) {
+        dao.deleteSubtask(subtaskId)
+    }
+
 }

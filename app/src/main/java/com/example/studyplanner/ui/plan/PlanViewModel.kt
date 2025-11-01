@@ -37,4 +37,20 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addSubtask(assessmentId: Long, name: String, dueAt: LocalDateTime) =
         viewModelScope.launch { repo.addSubtask(assessmentId, name, dueAt) }
+
+    fun updateSubtask(
+        assessmentId: Long,
+        subtaskId: Long,
+        name: String,
+        dueAt: LocalDateTime
+    ) = viewModelScope.launch {
+        repo.updateSubtask(assessmentId, subtaskId, name, dueAt)
+    }
+
+    fun deleteSubtask(
+        assessmentId: Long,
+        subtaskId: Long
+    ) = viewModelScope.launch {
+        repo.deleteSubtask(assessmentId, subtaskId)
+    }
 }

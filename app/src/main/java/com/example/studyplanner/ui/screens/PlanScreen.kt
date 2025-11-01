@@ -58,6 +58,16 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
             var showDelete by remember { mutableStateOf(false) }
             var showEdit by remember { mutableStateOf(false) }
 
+            // --- Minimal new state for subtask edit/delete ---
+            var editingSubId by remember { mutableStateOf<Long?>(null) }
+            var editingSubName by remember { mutableStateOf("") }
+            var editingSubDue by remember { mutableStateOf(plan.dueAt) }
+            var openSubWheel by remember { mutableStateOf(false) }
+
+            var deletingSubId by remember { mutableStateOf<Long?>(null) }
+            var deletingSubName by remember { mutableStateOf("") }
+            // --------------------------------------------------
+
             Card {
                 Column(Modifier.padding(16.dp)) {
                     Row(
@@ -87,14 +97,39 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         Text("Subtasks:", style = MaterialTheme.typography.labelLarge)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             plan.subtasks.forEach { st ->
-                                Text("• ${st.name} — due ${st.dueAt.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "• ${st.name} — due ${st.dueAt.format(fmt)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Row {
+                                        IconButton(onClick = {
+                                            editingSubId = st.id
+                                            editingSubName = st.name
+                                            editingSubDue = st.dueAt
+                                        }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Edit subtask")
+                                        }
+                                        IconButton(onClick = {
+                                            deletingSubId = st.id
+                                            deletingSubName = st.name
+                                        }) {
+                                            Icon(Icons.Filled.Delete, contentDescription = "Delete subtask")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Edit dialog → update via VM
+            // Edit assessment dialog → unchanged
             if (showEdit) {
                 var title by remember { mutableStateOf(plan.title) }
                 var dueAt by remember { mutableStateOf(plan.dueAt) }
@@ -139,7 +174,54 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Delete dialog → delete via VM
+            // --- Minimal new: Edit subtask dialog (reuses existing wheel) ---
+            if (editingSubId != null) {
+                val canSaveSub = editingSubName.isNotBlank() && editingSubDue <= plan.dueAt
+                AlertDialog(
+                    onDismissRequest = { editingSubId = null },
+                    title = { Text("Edit subtask") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = editingSubName,
+                                onValueChange = { editingSubName = it },
+                                label = { Text("Subtask name") },
+                                singleLine = true
+                            )
+                            Text("Due at: ${editingSubDue.format(fmt)}", style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = { openSubWheel = true }) { Text("Pick subtask due date") }
+                            Text(
+                                "Tip: subtask due should not exceed the assessment due date (${plan.dueAt.format(fmt)}).",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = canSaveSub,
+                            onClick = {
+                                vm.updateSubtask(plan.id, editingSubId!!, editingSubName.trim(), editingSubDue)
+                                Toast.makeText(context, "Subtask updated", Toast.LENGTH_SHORT).show()
+                                editingSubId = null
+                            }
+                        ) { Text("Save") }
+                    },
+                    dismissButton = { TextButton(onClick = { editingSubId = null }) { Text("Cancel") } }
+                )
+
+                if (openSubWheel) {
+                    DateTimeWheelDialog(
+                        initial = editingSubDue,
+                        onConfirm = { picked -> editingSubDue = picked; openSubWheel = false },
+                        onDismiss = { openSubWheel = false },
+                        min = LocalDateTime.now().withSecond(0).withNano(0),
+                        max = plan.dueAt
+                    )
+                }
+            }
+            // ----------------------------------------------------------------
+
+            // Delete assessment dialog → unchanged
             if (showDelete) {
                 AlertDialog(
                     onDismissRequest = { showDelete = false },
@@ -156,7 +238,25 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 )
             }
 
-            // Decompose dialog → add subtask via VM
+            // --- Minimal new: Delete subtask dialog ---
+            if (deletingSubId != null) {
+                AlertDialog(
+                    onDismissRequest = { deletingSubId = null },
+                    title = { Text("Delete subtask") },
+                    text = { Text("Remove \"$deletingSubName\" from ${plan.title}? This cannot be undone.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            vm.deleteSubtask(plan.id, deletingSubId!!)
+                            deletingSubId = null
+                            Toast.makeText(context, "Subtask deleted", Toast.LENGTH_SHORT).show()
+                        }) { Text("Delete") }
+                    },
+                    dismissButton = { TextButton(onClick = { deletingSubId = null }) { Text("Cancel") } }
+                )
+            }
+            // ---------------------------------------------------------------
+
+            // Decompose dialog → add subtask via VM (unchanged)
             if (showDecompose) {
                 var name by remember { mutableStateOf("") }
                 var dueAt by remember { mutableStateOf(minOf(defaultNextHour(), plan.dueAt)) }
@@ -204,9 +304,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 }
             }
 
-            // Add to calendar → uses SharedCalendar (in-memory markers), no DB changes
+            // Add to calendar → uses SharedCalendar (unchanged)
             if (showAuto) {
-                val context = LocalContext.current
                 val now = LocalDateTime.now()
                 val valid = plan.dueAt.isAfter(now)
 
@@ -230,7 +329,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                             onClick = {
                                 SharedCalendar.items.removeAll { it.assessmentId == plan.id }
 
-                                // Assessment due (1-hour marker)
                                 SharedCalendar.items.add(
                                     CalendarEntry(
                                         title = "${plan.title} — DUE",
@@ -241,7 +339,6 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                                     )
                                 )
 
-                                // Subtasks due
                                 var added = 1
                                 plan.subtasks.forEach { st ->
                                     SharedCalendar.items.add(
@@ -256,11 +353,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                                     added++
                                 }
 
-                                Toast.makeText(
-                                    context,
-                                    "Added $added calendar item(s).",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                Toast.makeText(context, "Added $added calendar item(s).", Toast.LENGTH_SHORT).show()
                                 showAuto = false
                             }
                         ) { Text("Add to Calendar") }
@@ -271,7 +364,7 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
         }
     }
 
-    // Add Assessment dialog → add via VM
+    // Add Assessment dialog → unchanged
     if (showAdd) {
         val context = LocalContext.current
         var title by remember { mutableStateOf("Assessment ${items.size + 1}") }
