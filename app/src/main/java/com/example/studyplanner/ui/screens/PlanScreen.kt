@@ -27,8 +27,6 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun PlanScreen(vm: PlanViewModel = viewModel()) {
-    LaunchedEffect(Unit) { vm.seedIfEmpty(::defaultNextHour) }
-
     val items by vm.items.collectAsStateWithLifecycle()
     val fmt = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm") }
     var showAdd by remember { mutableStateOf(false) }

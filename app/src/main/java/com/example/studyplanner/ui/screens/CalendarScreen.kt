@@ -3,6 +3,8 @@ package com.example.studyplanner.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,191 +33,185 @@ fun CalendarScreen(vm: PlanViewModel = viewModel()) {
     val today = LocalDate.now()
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
 
-    // Pull persisted data from Room via ViewModel
+    // DB items (for "assignments this month" count)
     val items by vm.items.collectAsStateWithLifecycle()
 
-    // Build quick lookups for day markers (assessment vs subtasks)
-    val assignmentDates = remember(items) {
-        items.map { it.dueAt.toLocalDate() }.toSet()
+    // In-memory calendar marks created by PlanScreen ("Add to calendar")
+    val all = SharedCalendar.items
+
+    // Precompute markers for the month grid (from calendar marks only)
+    val assignmentsByDate = remember(all.size) {
+        all.filter { it.subtaskName == "Assessment due" }
+            .groupBy { it.start.toLocalDate() }
     }
-    val subtaskDates = remember(items) {
-        items.flatMap { it.subtasks }.map { it.dueAt.toLocalDate() }.toSet()
+    val subtasksByDate = remember(all.size) {
+        all.filter { it.subtaskName != "Assessment due" }
+            .groupBy { it.start.toLocalDate() }
     }
 
     val monthTitleFmt = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        // Header: month nav + today button
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
-                Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous month")
-            }
-            Text(
-                text = currentMonth.atDay(1).format(monthTitleFmt),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
-                Icon(Icons.Filled.ChevronRight, contentDescription = "Next month")
+    // Month list (marks) for the visible month
+    val monthStart = currentMonth.atDay(1).atStartOfDay()
+    val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
+    val monthList = remember(all.size, currentMonth) {
+        all.filter { it.start in monthStart..monthEnd }.sortedBy { it.start }
+    }
+
+    // Counters
+    val monthMarksCount = monthList.size
+    val assignmentsThisMonth = remember(items, currentMonth) {
+        items.count { it.dueAt in monthStart..monthEnd }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Header: month nav + title
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                    Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous month")
+                }
+                Text(
+                    text = currentMonth.atDay(1).format(monthTitleFmt),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                    Icon(Icons.Filled.ChevronRight, contentDescription = "Next month")
+                }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AssistChip(onClick = { currentMonth = YearMonth.now() }, label = { Text("Today") })
-
-            // Count events in the visible month (assessment + subtasks)
-            val monthStart = currentMonth.atDay(1).atStartOfDay()
-            val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
-            val monthEventsCount = remember(items, currentMonth) {
-                val assessCount = items.count { it.dueAt in monthStart..monthEnd }
-                val subCount = items.sumOf { it.subtasks.count { st -> st.dueAt in monthStart..monthEnd } }
-                assessCount + subCount
+        // Today + counters
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AssistChip(onClick = { currentMonth = YearMonth.now() }, label = { Text("Today") })
+                Text(
+                    "$monthMarksCount mark(s) • $assignmentsThisMonth assignment(s)",
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
-            Text("$monthEventsCount item(s)", style = MaterialTheme.typography.labelLarge)
         }
-
-        Spacer(Modifier.height(12.dp))
 
         // Weekday header (Mon..Sun)
-        val weekdays = listOf(
-            DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
-            DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
-        )
-        Row(Modifier.fillMaxWidth()) {
-            for (dow in weekdays) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        dow.name.take(3), // Mon, Tue, ...
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Build month grid
-        val firstOfMonth = currentMonth.atDay(1)
-        val daysInMonth = currentMonth.lengthOfMonth()
-        val leadingBlanks = ((firstOfMonth.dayOfWeek.value + 6) % 7) // Mon=1 -> 0 blanks; Sun=7 -> 6 blanks
-        val totalCells = leadingBlanks + daysInMonth
-        val rows = ceil(totalCells / 7.0).toInt()
-
-        Column(Modifier.fillMaxWidth()) {
-            for (r in 0 until rows) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (c in 0 until 7) {
-                        val idx = r * 7 + c
-                        val dayNum = idx - leadingBlanks + 1
-                        if (dayNum in 1..daysInMonth) {
-                            val date = currentMonth.atDay(dayNum)
-                            val isToday = date == today
-                            val hasAssignment = assignmentDates.contains(date)
-                            val hasSubtasks = subtaskDates.contains(date)
-
-                            Box(Modifier.weight(1f).aspectRatio(1f)) {
-                                DayCell(
-                                    date = date,
-                                    isToday = isToday,
-                                    hasAssignment = hasAssignment,
-                                    hasSubtasks = hasSubtasks
-                                )
-                            }
-                        } else {
-                            Box(Modifier.weight(1f).aspectRatio(1f))
-                        }
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Monthly list from DB items (assessment first, then subtasks), ordered
-        val timeFmt = remember { DateTimeFormatter.ofPattern("EEE, dd MMM • HH:mm") }
-        val monthStart = currentMonth.atDay(1).atStartOfDay()
-        val monthEnd = currentMonth.atEndOfMonth().atTime(23, 59)
-        data class CalendarListItem(
-            val title: String,
-            val start: LocalDateTime,
-            val isAssessment: Boolean
-        )
-
-        val monthList = remember(items, currentMonth) {
-            buildList {
-                items.forEach { a ->
-                    if (a.dueAt in monthStart..monthEnd) {
-                        add(
-                            CalendarListItem(
-                                title = "${a.title} — DUE",
-                                start = a.dueAt,
-                                isAssessment = true
-                            )
+        item {
+            val weekdays = listOf(
+                DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
+                DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY
+            )
+            Row(Modifier.fillMaxWidth()) {
+                for (dow in weekdays) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            dow.name.take(3),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
-                    a.subtasks.forEach { st ->
-                        if (st.dueAt in monthStart..monthEnd) {
-                            add(
-                                CalendarListItem(
-                                    title = "${a.title}: ${st.name} — DUE",
-                                    start = st.dueAt,
-                                    isAssessment = false
-                                )
-                            )
-                        }
-                    }
                 }
-            }.sortedBy { it.start }
+            }
         }
 
-        if (monthList.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text("This month", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                monthList.forEach { e ->
-                    val bg = if (e.isAssessment) cs.errorContainer else cs.secondaryContainer
-                    val fg = if (e.isAssessment) cs.onErrorContainer else cs.onSecondaryContainer
-                    Surface(
-                        color = bg,
-                        contentColor = fg,
-                        shape = RoundedCornerShape(12.dp),
-                        tonalElevation = if (e.isAssessment) 4.dp else 0.dp
-                    ) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(e.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                Text(e.start.format(timeFmt), style = MaterialTheme.typography.bodyMedium)
+        // Month grid (kept as before, now it's just one scroll item)
+        item {
+            val firstOfMonth = currentMonth.atDay(1)
+            val daysInMonth = currentMonth.lengthOfMonth()
+            val leadingBlanks = ((firstOfMonth.dayOfWeek.value + 6) % 7)
+            val totalCells = leadingBlanks + daysInMonth
+            val rows = ceil(totalCells / 7.0).toInt()
+
+            Column(Modifier.fillMaxWidth()) {
+                for (r in 0 until rows) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (c in 0 until 7) {
+                            val idx = r * 7 + c
+                            val dayNum = idx - leadingBlanks + 1
+                            if (dayNum in 1..daysInMonth) {
+                                val date = currentMonth.atDay(dayNum)
+                                val isToday = date == today
+                                val hasAssignment = assignmentsByDate.containsKey(date)
+                                val hasSubtasks = subtasksByDate.containsKey(date)
+
+                                Box(Modifier.weight(1f).aspectRatio(1f)) {
+                                    DayCell(
+                                        date = date,
+                                        isToday = isToday,
+                                        hasAssignment = hasAssignment,
+                                        hasSubtasks = hasSubtasks
+                                    )
+                                }
+                            } else {
+                                Box(Modifier.weight(1f).aspectRatio(1f))
                             }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+        }
+
+        // "This month" section title or empty text
+        if (monthList.isNotEmpty()) {
+            item {
+                Text("This month", style = MaterialTheme.typography.titleMedium)
+            }
+
+            // Monthly list with Remove action (scrolls as part of LazyColumn)
+            items(monthList) { entry ->
+                val isAssessment = entry.subtaskName == "Assessment due"
+                val bg = if (isAssessment) cs.errorContainer else cs.secondaryContainer
+                val fg = if (isAssessment) cs.onErrorContainer else cs.onSecondaryContainer
+                val timeFmt = remember { DateTimeFormatter.ofPattern("EEE, dd MMM HH:mm") }
+
+                // Extract base title (remove trailing "— DUE" or " - DUE")
+                val baseTitle = remember(entry.title) {
+                    entry.title.substringBefore(" —").substringBefore(" - ").trim()
+                }
+
+                Surface(
+                    color = bg,
+                    contentColor = fg,
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = if (isAssessment) 4.dp else 0.dp
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(baseTitle, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("DUE: ${entry.start.format(timeFmt)}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        TextButton(onClick = { SharedCalendar.items.remove(entry) }) {
+                            Text("Remove")
                         }
                     }
                 }
             }
         } else {
-            Text("No calendar items this month.", style = MaterialTheme.typography.bodyMedium)
+            item {
+                Text("No calendar items this month.", style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 }
@@ -248,13 +244,12 @@ private fun DayCell(
             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
         )
 
-        // Markers at bottom: assessment is more salient than subtasks
+        // Markers at bottom
         Column(
             Modifier.align(Alignment.BottomCenter),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (hasAssignment) {
-                // Wide pill (salient)
                 Box(
                     Modifier
                         .fillMaxWidth(0.75f)
@@ -265,7 +260,6 @@ private fun DayCell(
                 if (hasSubtasks) Spacer(Modifier.height(2.dp))
             }
             if (hasSubtasks) {
-                // Small dot (subtle)
                 Box(
                     Modifier
                         .size(6.dp)

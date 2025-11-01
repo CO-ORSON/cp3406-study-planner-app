@@ -37,12 +37,4 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addSubtask(assessmentId: Long, name: String, dueAt: LocalDateTime) =
         viewModelScope.launch { repo.addSubtask(assessmentId, name, dueAt) }
-
-    fun seedIfEmpty(defaultNextHour: () -> LocalDateTime) = viewModelScope.launch {
-        if (repo.countAssessments() == 0) {
-            repo.addAssessment("Assessment 1", defaultNextHour().plusWeeks(1))
-            repo.addAssessment("Assessment 2", defaultNextHour().plusWeeks(2))
-            repo.addAssessment("Assessment 3", defaultNextHour().plusWeeks(3))
-        }
-    }
 }
