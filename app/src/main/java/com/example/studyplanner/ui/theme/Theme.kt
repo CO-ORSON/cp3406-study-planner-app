@@ -11,7 +11,7 @@ private val DarkColors  = darkColorScheme()
 
 @Composable
 fun StudyPlannerTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()           // follow device setting
+    val dark = isSystemInDarkTheme()  // follow device setting
     MaterialTheme(
         colorScheme = if (dark) DarkColors else LightColors,
         content = content

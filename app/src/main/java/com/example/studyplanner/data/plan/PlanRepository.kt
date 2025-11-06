@@ -10,11 +10,9 @@ class PlanRepository(private val dao: PlanDao) {
     suspend fun addAssessment(title: String, dueAt: LocalDateTime): Long =
         dao.insertAssessment(AssessmentEntity(title = title, dueAt = dueAt))
 
-    // Do NOT pass a partial entity to @Update; use the targeted query instead
     suspend fun updateAssessment(id: Long, title: String, dueAt: LocalDateTime) =
         dao.updateAssessmentTitleAndDueAt(id, title, dueAt)
 
-    // If you don't have FK ON DELETE CASCADE, also remove subtasks
     suspend fun deleteAssessment(id: Long) {
         dao.deleteSubtasksFor(id) // delete children first to avoid FK issues
         dao.deleteAssessment(id)

@@ -62,7 +62,6 @@ fun AppScaffold() {
                     NavigationBarItem(
                         selected = selected,
                         onClick = {
-                            // Keep-alive navigation for top-level destinations
                             navController.navigate(item.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
