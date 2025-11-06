@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,7 +51,9 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                 )
                 IconButton(
                     onClick = { showAdd = true },
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("add-assessment")
                 ) {
                     Icon(
                         Icons.Filled.PlaylistAddCircle,
@@ -88,12 +91,22 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(plan.title, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            plan.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.testTag("title-${plan.id}")
+                        )
                         Row {
-                            IconButton(onClick = { showEdit = true }) {
+                            IconButton(
+                                onClick = { showEdit = true },
+                                modifier = Modifier.testTag("btn-edit-${plan.id}")
+                            ) {
                                 Icon(Icons.Filled.Edit, contentDescription = "Edit assessment")
                             }
-                            IconButton(onClick = { showDelete = true }) {
+                            IconButton(
+                                onClick = { showDelete = true },
+                                modifier = Modifier.testTag("btn-delete-${plan.id}")
+                            ) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Delete assessment")
                             }
                         }
@@ -246,11 +259,14 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                     title = { Text("Delete assessment") },
                     text = { Text("Remove \"${plan.title}\" from your plan? This cannot be undone.") },
                     confirmButton = {
-                        TextButton(onClick = {
-                            vm.deleteAssessment(plan.id)
-                            showDelete = false
-                            Toast.makeText(context, "Deleted ${plan.title}", Toast.LENGTH_SHORT).show()
-                        }) { Text("Delete") }
+                        TextButton(
+                            onClick = {
+                                vm.deleteAssessment(plan.id)
+                                showDelete = false
+                                Toast.makeText(context, "Deleted ${plan.title}", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.testTag("confirm-delete")
+                        ) { Text("Delete") }
                     },
                     dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } }
                 )
@@ -378,7 +394,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         value = title,
                         onValueChange = { title = it },
                         label = { Text("Title") },
-                        singleLine = true
+                        singleLine = true,
+                        modifier = Modifier.testTag("field-title")
                     )
                     Text("Due at: ${dueAt.format(fmtLocal)}", style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { openWheel = true }) { Text("Pick due date") }
@@ -392,7 +409,8 @@ fun PlanScreen(vm: PlanViewModel = viewModel()) {
                         vm.addAssessment(title.trim(), dueAt)
                         Toast.makeText(context, "Added ${title.trim()}", Toast.LENGTH_SHORT).show()
                         showAdd = false
-                    }
+                    },
+                    modifier = Modifier.testTag("btn-save")
                 ) { Text("Add") }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } }

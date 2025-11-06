@@ -36,4 +36,7 @@ interface PlanDao {
 
     @Query("UPDATE assessments SET remark = :remark WHERE id = :assessmentId")
     suspend fun updateAssessmentRemark(assessmentId: Long, remark: String)
+
+    @Query("UPDATE assessments SET title = :title, dueAt = :dueAt WHERE id = :id")
+    suspend fun updateAssessmentTitleAndDueAt(id: Long, title: String, dueAt: LocalDateTime)
 }

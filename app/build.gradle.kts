@@ -16,6 +16,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         vectorDrawables.useSupportLibrary = true
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" // <-- ADD
     }
 
     buildTypes {
@@ -39,7 +41,7 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-    // Configure JVM Toolchain
+    // JVM Toolchain
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -72,17 +74,27 @@ dependencies {
     // Optional icons
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
 
-    // --- Added for Room ---
+    // --- Room ---
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // --- Added for ViewModel + lifecycle in Compose ---
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
-
+    // ===== Tests =====
+    // Unit tests (JVM)
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("app.cash.turbine:turbine:1.1.0")
+    testImplementation("io.mockk:mockk:1.13.12")
+
+    // Instrumented tests (device/emulator)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+
+    // Compose UI testing
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
